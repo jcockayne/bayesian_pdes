@@ -1,38 +1,46 @@
 import numpy as np
 
 
-def collocate(A, Abar, B, Bbar, k, symbols, interior_obs, boundary_obs):
-    interior_points, interior_vals = interior_obs
-    boundary_points, boundary_vals = boundary_obs
+def collocate(operators, operators_bar, k, symbols, observations):
 
     # for now we only support sympy, maybe later support Theano?
     # nest inside a function which will apply the result pairwise
-    def mf(fun):
+    def functionize(fun):
         sympy_fun = sympy_function(fun, symbols)
         return lambda x_1, x_2: pairwise_apply(sympy_fun, x_1, x_2)
 
-    k_eval = mf(k)
-    A_k = mf(A(k))
-    B_k = mf(B(k))
-    Abar_k = mf(Abar(k))
-    Bbar_k = mf(Bbar(k))
+    k_eval = functionize(k)
 
-    AAbar_k = mf(A(Abar(k)))
-    ABbar_k = mf(A(Bbar(k)))
-    BAbar_k = mf(B(Abar(k)))
-    BBbar_k = mf(B(Bbar(k)))
+    all_points = [p for p, _ in observations]
 
-    # now, build the matrices we need
-    Lbar = lambda x: np.c_[Abar_k(x, interior_points), Bbar_k(x, boundary_points)].T
-    L = lambda x: np.c_[A_k(x,interior_points), B_k(x,boundary_points)].T
-    LLbar = np.r_[
-        np.c_[AAbar_k(interior_points,interior_points), ABbar_k(interior_points,boundary_points)],
-        np.c_[BAbar_k(boundary_points,interior_points), BBbar_k(boundary_points,boundary_points)]
-    ]
+    # build the 1D operators
+    def apply_1d(this_operators):
+        tmp = []
+        for op in this_operators:
+            tmp.append(functionize(op(k)))
+        return lambda x: np.concatenate([f(x, obs[0]) for f, obs in zip(tmp, observations)], 1).T
+
+    L = apply_1d(operators)
+    Lbar = apply_1d(operators_bar)
+
+    # and build the 2D matrix
+    LLbar = []
+    for op, obs_1 in zip(operators, observations):
+        tmp = []
+        for op_bar, obs_2 in zip(operators_bar, observations):
+            points_1, _ = obs_1
+            points_2, _ = obs_2
+
+            fun_op = functionize(op(op_bar(k)))
+            applied = fun_op(points_1, points_2)
+            tmp.append(applied)
+        LLbar.append(np.concatenate(tmp, 1))
+
+    LLbar = np.concatenate(LLbar, 0)
     LLbar_inv = np.linalg.inv(LLbar)
 
     # and the observation vector...
-    g = np.concatenate([interior_vals, boundary_vals])
+    g = np.concatenate([val for _, val in observations])
 
     # finally return the posterior
     def __posterior(test_points, samples):
