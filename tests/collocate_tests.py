@@ -41,4 +41,5 @@ class CollocateTests(unittest.TestCase):
             [(interior, interior_obs), (exterior, exterior_obs)]
         )
 
-        samp = posterior(interior, 1)
+        # todo: assert something instead of just marvelling at the fact that this works.
+        mean, cov = posterior(interior)
