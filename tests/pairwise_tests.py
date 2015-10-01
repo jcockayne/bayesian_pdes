@@ -40,10 +40,11 @@ class PairwiseTests(unittest.TestCase):
         def __fun(a, b):
             return np.sum(a*b)
 
-        A = np.linspace(0, 1, 100)[:, None]
-        B = np.linspace(0, 1, 100)[:, None]
+        A,B = np.mgrid[0:1:100j, 0:1:100j]
 
         cython_timing = timeit(lambda: pairwise.apply(__fun, A, B), number=10)
         print cython_timing
         python_timing = timeit(lambda: manual_pairwise(__fun, A, B), number=10)
         print python_timing
+
+        self.assertLess(cython_timing, python_timing)
