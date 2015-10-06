@@ -1,6 +1,6 @@
 import numpy as np
 import pairwise
-from sympy_helpers import sympy_function
+from sympy_helpers import sympy_function, two_arg_applier
 
 
 def collocate(operators, operators_bar, k, symbols, observations):
@@ -23,8 +23,10 @@ def collocate(operators, operators_bar, k, symbols, observations):
 
     k_eval = functionize(k, symbols)
 
-    L = apply_1d(operators, k, symbols, [p for p, _ in observations])
-    Lbar = apply_1d(operators_bar, k, symbols, [p for p, _ in observations])
+    points = [p for p, _ in observations]
+
+    L = apply_1d(operators, k, symbols, points)
+    Lbar = apply_1d(operators_bar, k, symbols, points)
 
     LLbar = calc_LLbar(operators, operators_bar, k, symbols, observations)
     LLbar_inv = np.linalg.inv(LLbar)
@@ -49,8 +51,13 @@ def collocate(operators, operators_bar, k, symbols, observations):
 # for now we only support sympy, maybe later support Theano?
 # nest inside a function which will apply the result pairwise
 def functionize(fun, symbols):
-    sympy_fun = sympy_function(fun, symbols)
-    return lambda a, b: pairwise.apply(sympy_fun, a, b)
+    sympy_fun = sympy_function(fun, symbols, apply_factory=two_arg_applier)
+
+    def __ret_function(a, b):
+        return pairwise.apply(sympy_fun, a, b)
+
+    return __ret_function
+
 
 
 # build the 1D operators
@@ -67,7 +74,8 @@ def apply_1d(operators, k, symbols, observations):
     assert len(operators) == len(observations), "Number of operators must match number of observations"
     tmp = []
     for op in operators:
-        tmp.append(functionize(op(k), symbols))
+        functioned = functionize(op(k), symbols)
+        tmp.append(functioned)
     return lambda x: np.hstack([f(x, obs) for f, obs in zip(tmp, observations)]).T
 
 def calc_LLbar(operators, operators_bar, k, symbols, observations):

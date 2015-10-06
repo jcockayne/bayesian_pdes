@@ -71,10 +71,18 @@ class CollocateTests(unittest.TestCase):
             [(interior, interior_obs), (exterior, exterior_obs)]
         )
 
-        # todo: assert something instead of just marvelling at the fact that this works.
-        mean, cov = posterior(interior)
+        import time
+        start = time.time()
 
-        actual = - (np.sin(2*np.pi*interior[:,0]) + np.sin(2*np.pi*interior[:,1])) / (4*np.pi**2)
+        # test_x, test_y = np.mgrid[0:1:21j, 0:1:21j]
+        # test_points = np.c_[test_x.ravel(), test_y.ravel()]
+        test_points = interior
+        mean, cov = posterior(test_points)
+
+        end = time.time()
+        print end - start
+
+        actual = - (np.sin(2*np.pi*test_points[:,0]) + np.sin(2*np.pi*test_points[:,1])) / (4*np.pi**2)
         ci = cov.dot(0.25*np.ones_like(mean))  # represents a 0.25SD CI for each observation
 
         err = np.abs(mean - actual)
