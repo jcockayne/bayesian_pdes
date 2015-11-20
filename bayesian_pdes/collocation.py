@@ -3,7 +3,7 @@ import pairwise
 from sympy_helpers import sympy_function, two_arg_applier
 
 
-def generate_op_cache(operators, operators_bar, k, symbols, mode):
+def generate_op_cache(operators, operators_bar, k, symbols, mode=None):
     ret = {
         tuple(): functionize(k, symbols, mode=mode)
     }
@@ -45,6 +45,12 @@ def collocate(operators, operators_bar, k, symbols, observations, op_cache=None)
     :return: A function which, when given a set of test points, returns the posterior mean and covariance at those
     points.
     """
+    for locs, vals in observations:
+        err = " (Loc has shape {}, vals have shape {})".format(locs.shape, vals.shape)
+        if locs.shape[0] != vals.shape[0]:
+            raise Exception("Number of obs not consistent with location of obs " + err)
+        if len(locs.shape) != 2:
+            raise Exception("Obs locations must be two-dimensional " + err)
 
     if op_cache is None:
         op_cache = generate_op_cache(operators, operators_bar, k, symbols)
@@ -77,7 +83,7 @@ def collocate(operators, operators_bar, k, symbols, observations, op_cache=None)
 
 # for now we only support sympy, maybe later support Theano?
 # nest inside a function which will apply the result pairwise
-def functionize(fun, symbols, mode='compile', apply_factory=two_arg_applier):
+def functionize(fun, symbols, mode=None, apply_factory=two_arg_applier):
     sympy_fun = sympy_function(fun, symbols, mode=mode, apply_factory=apply_factory)
 
     def __ret_function(a, b):

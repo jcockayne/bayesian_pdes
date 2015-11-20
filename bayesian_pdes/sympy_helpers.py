@@ -49,7 +49,7 @@ def generic_applier(compiled_func, symbols):
     return __apply_generic
 
 
-def sympy_function(sympy_expression, sympy_symbols, mode='lambda', apply_factory=generic_applier):
+def sympy_function(sympy_expression, sympy_symbols, mode=None, apply_factory=generic_applier):
     """
     Convert a sympy expression into a function whose arguments reflect a particular vector structure.
     :param sympy_expression: A sympy expression in a flattened set of variables.
@@ -58,6 +58,7 @@ def sympy_function(sympy_expression, sympy_symbols, mode='lambda', apply_factory
     [[x_1, x_2], [y_1, y_2]] : expects two vectors (iterables) of length 2
     [[x_1, x_2], y] : expects a vector of length 2 and a scalar.
     :param mode: Either 'lambda' or 'compile'. 'lambda' will use sympy.lambdify while 'compile' will use sympy.autowrap
+    default: Lambda
     :param apply_factory: An expression which will apply the flattening operator to the arguments, and then pass
     to the sympy expression.
     :return: The callable expression
@@ -70,7 +71,7 @@ def sympy_function(sympy_expression, sympy_symbols, mode='lambda', apply_factory
             flattened += s
         else:
             flattened.append(s)
-    if mode.lower() == 'lambda':
+    if mode is None or mode.lower() == 'lambda':
         sympyd = lambdify(flattened, sympy_expression)
     elif mode.lower() == 'compile':
         sympyd = autowrap.autowrap(sympy_expression, args=flattened)
