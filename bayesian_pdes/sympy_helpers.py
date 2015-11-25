@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def two_arg_applier(compiled_func, symbols):
+def n_arg_applier(compiled_func, symbols):
     """
     Apply the function to the arguments assuming there are two arguments that need to be flattened.
     This is much faster but obviously if there _aren't_ two args it won't work!
@@ -10,8 +10,8 @@ def two_arg_applier(compiled_func, symbols):
     :return: A flattened function applicator
     """
     # this is unsafe!
-    def __apply_two_arg(arg1, arg2):
-        ret = compiled_func(*np.concatenate([arg1, arg2]))
+    def __apply_two_arg(*args):
+        ret = compiled_func(*np.concatenate(args))
         return ret
 
     return __apply_two_arg

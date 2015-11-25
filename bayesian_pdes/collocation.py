@@ -1,6 +1,6 @@
 import numpy as np
 import pairwise
-from sympy_helpers import sympy_function, two_arg_applier
+from sympy_helpers import sympy_function, n_arg_applier
 
 
 def generate_op_cache(operators, operators_bar, k, symbols, mode=None):
@@ -28,7 +28,7 @@ def generate_op_cache(operators, operators_bar, k, symbols, mode=None):
     return ret
 
 
-def collocate(operators, operators_bar, k, symbols, observations, op_cache=None):
+def collocate(operators, operators_bar, k, symbols, observations, op_cache=None, fun_args=None):
     """
     Construct a collocation approximation to the system of operators supplied.
     :param operators: List of operators operators (as functions which operate on sympy expressions)
@@ -58,11 +58,14 @@ def collocate(operators, operators_bar, k, symbols, observations, op_cache=None)
 
     points = [p for p, _ in observations]
 
-    L = apply_1d(operators, points, op_cache)
-    Lbar = apply_1d(operators_bar, points, op_cache)
-
-    LLbar = calc_LLbar(operators, operators_bar, observations, op_cache)
-    LLbar_inv = np.linalg.inv(LLbar)
+    LLbar = calc_LLbar(operators, operators_bar, observations, op_cache, fun_args)
+    # optimization - if the returned object has an inv() method then use that
+    # this is to make use of things like the kronecker inverse formula
+    if hasattr(LLbar, 'inv'):
+        # asarray this so that we aren't doing anything funky every time we .dot
+        LLbar_inv = np.asarray(LLbar.inv())
+    else:
+        LLbar_inv = np.linalg.inv(LLbar)
 
     # and the observation vector...
     g = np.concatenate([val for _, val in observations])
@@ -70,11 +73,19 @@ def collocate(operators, operators_bar, k, symbols, observations, op_cache=None)
 
     # finally return the posterior
     def __posterior(test_points):
-        Lbar_test = Lbar(test_points)
-        L_test = L(test_points)
+        L = []
+        Lbar = []
+        for op, op_bar, point in zip(operators, operators_bar, points):
+            f = op_cache[op]
+            fbar = op_cache[op]
+            L.append(f(point, test_points, *fun_args))
+            Lbar.append(fbar(test_points, point, *fun_args))
+        L = np.vstack(L)
+        Lbar = np.hstack(Lbar)
 
-        mu = Lbar_test.T.dot(LLbar_inv).dot(g)
-        Sigma = k_eval(test_points, test_points) - Lbar_test.T.dot(LLbar_inv).dot(L_test)
+        mu = Lbar.dot(LLbar_inv).dot(g)
+        k_mat = k_eval(test_points, test_points, *fun_args)
+        Sigma = k_mat - Lbar.dot(LLbar_inv).dot(L)
 
         return mu, Sigma
 
@@ -83,35 +94,16 @@ def collocate(operators, operators_bar, k, symbols, observations, op_cache=None)
 
 # for now we only support sympy, maybe later support Theano?
 # nest inside a function which will apply the result pairwise
-def functionize(fun, symbols, mode=None, apply_factory=two_arg_applier):
+def functionize(fun, symbols, mode=None, apply_factory=n_arg_applier):
     sympy_fun = sympy_function(fun, symbols, mode=mode, apply_factory=apply_factory)
 
-    def __ret_function(a, b):
-        return pairwise.apply(sympy_fun, a, b)
+    def __ret_function(a, b, extra=None):
+        return pairwise.apply(sympy_fun, a, b, extra)
 
     return __ret_function
 
 
-# build the 1D operators
-def apply_1d(operators, observations, op_cache):
-    """
-    Given an array of operators and a sympy expression to apply them to, plus the symbols,
-    return a lambda function which can be used to evaluate the operator applied to the function in a grid.
-    :param operators: The operators
-    :param k: The sympy expression
-    :param symbols: Arguments of the sympy expression
-    :param observations: points to constitute the rows.
-    :return:
-    """
-    assert len(operators) == len(observations), "Number of operators must match number of observations"
-    tmp = []
-    for op in operators:
-        functioned = op_cache[op]
-        tmp.append(functioned)
-    return lambda x: np.hstack([f(x, obs) for f, obs in zip(tmp, observations)]).T
-
-
-def calc_LLbar(operators, operators_bar, observations, op_cache):
+def calc_LLbar(operators, operators_bar, observations, op_cache, fun_args=None):
     # and build the 2D matrix
     LLbar = []
 
@@ -123,7 +115,7 @@ def calc_LLbar(operators, operators_bar, observations, op_cache):
 
             fun_op = op_cache[(op, op_bar)]
 
-            applied = fun_op(points_1, points_2)
+            applied = fun_op(points_1, points_2, *fun_args)
             tmp.append(applied)
         LLbar.append(np.hstack(tmp))
 
