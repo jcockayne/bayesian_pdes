@@ -3,7 +3,7 @@ import pairwise
 from sympy_helpers import sympy_function, n_arg_applier
 
 
-def generate_op_cache(operators, operators_bar, k, symbols, mode=None):
+def generate_op_cache(operators, operators_bar, k, symbols, mode=None, debug=False):
     ret = {
         tuple(): functionize(k, symbols, mode=mode)
     }
@@ -45,6 +45,8 @@ def collocate(operators, operators_bar, k, symbols, observations, op_cache=None,
     :return: A function which, when given a set of test points, returns the posterior mean and covariance at those
     points.
     """
+    if fun_args is None:
+        fun_args = []
     for locs, vals in observations:
         err = " (Loc has shape {}, vals have shape {})".format(locs.shape, vals.shape)
         if locs.shape[0] != vals.shape[0]:
@@ -77,7 +79,7 @@ def collocate(operators, operators_bar, k, symbols, observations, op_cache=None,
         Lbar = []
         for op, op_bar, point in zip(operators, operators_bar, points):
             f = op_cache[op]
-            fbar = op_cache[op]
+            fbar = op_cache[op_bar]
             L.append(f(point, test_points, *fun_args))
             Lbar.append(fbar(test_points, point, *fun_args))
         L = np.vstack(L)
@@ -105,6 +107,8 @@ def functionize(fun, symbols, mode=None, apply_factory=n_arg_applier):
 
 def calc_LLbar(operators, operators_bar, observations, op_cache, fun_args=None):
     # and build the 2D matrix
+    if fun_args is None:
+        fun_args = []
     LLbar = []
 
     for op, obs_1 in zip(operators, observations):
