@@ -49,7 +49,7 @@ def generic_applier(compiled_func, symbols):
     return __apply_generic
 
 
-def sympy_function(sympy_expression, sympy_symbols, mode=None, apply_factory=generic_applier):
+def sympy_function(sympy_expression, sympy_symbols, mode=None, lambdify_modules=None, apply_factory=generic_applier):
     """
     Convert a sympy expression into a function whose arguments reflect a particular vector structure.
     :param sympy_expression: A sympy expression in a flattened set of variables.
@@ -72,9 +72,9 @@ def sympy_function(sympy_expression, sympy_symbols, mode=None, apply_factory=gen
         else:
             flattened.append(s)
     if mode is None or mode.lower() == 'lambda':
-        sympyd = lambdify(flattened, sympy_expression)
+        sympyd = lambdify(flattened, sympy_expression, modules=lambdify_modules)
     elif mode.lower() == 'compile':
-        sympyd = autowrap.autowrap(sympy_expression, args=flattened)
+        sympyd = autowrap.autowrap(sympy_expression, backend='cython', args=flattened)
     else:
         raise Exception('Mode for generation of sympy function {} not understood.'.format(mode))
 
