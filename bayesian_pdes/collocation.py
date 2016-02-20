@@ -1,31 +1,8 @@
 import numpy as np
-import pairwise
-from sympy_helpers import sympy_function, n_arg_applier
+import operator_caching
 
 
-def generate_op_cache(operators, operators_bar, k, symbols, mode=None, sympy_function_kwargs=None, debug=False):
-    ret = {
-        tuple(): functionize(k, symbols, mode=mode, sympy_function_kwargs=sympy_function_kwargs)
-    }
-    for op in operators:
-        if op not in ret:
-            ret[(op,)] = functionize(op(k), symbols, mode=mode, sympy_function_kwargs=sympy_function_kwargs)
-    for op in operators_bar:
-        if op not in ret:
-            ret[(op,)] = functionize(op(k), symbols, mode=mode, sympy_function_kwargs=sympy_function_kwargs)
-    # combinations
-    for op in operators:
-        for op_bar in operators_bar:
-            # don't do anything if already there
-            if (op, op_bar) in ret:
-                pass
-            # exploit symmetry
-            elif (op_bar, op) in ret:
-                ret[(op, op_bar)] = ret[(op_bar, op)]
-            # no choice!!
-            else:
-                ret[(op, op_bar)] = functionize(op(op_bar(k)), symbols, mode=mode, sympy_function_kwargs=sympy_function_kwargs)
-    return ret
+
 
 
 def collocate(operators, operators_bar, k, symbols, observations, op_cache=None, fun_args=None):
@@ -54,7 +31,7 @@ def collocate(operators, operators_bar, k, symbols, observations, op_cache=None,
             raise Exception("Obs locations must be two-dimensional " + err)
 
     if op_cache is None:
-        op_cache = generate_op_cache(operators, operators_bar, k, symbols)
+        op_cache = operator_caching.generate_op_cache(operators, operators_bar, k, symbols)
 
     LLbar = calc_LLbar(operators, operators_bar, observations, op_cache, fun_args)
     # optimization - if the returned object has an inv() method then use that
@@ -71,17 +48,6 @@ def collocate(operators, operators_bar, k, symbols, observations, op_cache=None,
     return CollocationPosterior(operators, operators_bar, op_cache, observations, LLbar_inv, fun_args)
 
 
-# for now we only support sympy, maybe later support Theano?
-# nest inside a function which will apply the result pairwise
-def functionize(fun, symbols, mode=None, apply_factory=n_arg_applier, sympy_function_kwargs=None):
-    if sympy_function_kwargs is None:
-        sympy_function_kwargs = {}
-    sympy_fun = sympy_function(fun, symbols, mode=mode, apply_factory=apply_factory, **sympy_function_kwargs)
-
-    def __ret_function(a, b, extra=None):
-        return pairwise.apply(sympy_fun, a, b, extra)
-
-    return __ret_function
 
 
 def calc_LLbar(operators, operators_bar, observations, op_cache, fun_args=None):

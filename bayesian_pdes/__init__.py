@@ -1,3 +1,4 @@
 __author__ = 'benorn'
-from collocation import collocate, generate_op_cache
+from collocation import collocate
+import operator_caching
 import problems
