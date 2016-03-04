@@ -4,7 +4,7 @@ import numpy as np
 import hashlib
 
 
-def generate_op_cache(operators, operators_bar, k, symbols, mode=None, sympy_function_kwargs=None, debug=False):
+def compile_sympy(operators, operators_bar, k, symbols, mode=None, sympy_function_kwargs=None, debug=False):
     ret = {
         tuple(): __functionize(k, symbols, mode=mode, sympy_function_kwargs=sympy_function_kwargs)
     }

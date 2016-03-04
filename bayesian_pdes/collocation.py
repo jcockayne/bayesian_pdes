@@ -1,8 +1,5 @@
 import numpy as np
-import operator_caching
-
-
-
+import operator_compilation
 
 
 def collocate(operators, operators_bar, k, symbols, observations, op_cache=None, fun_args=None):
@@ -31,7 +28,7 @@ def collocate(operators, operators_bar, k, symbols, observations, op_cache=None,
             raise Exception("Obs locations must be two-dimensional " + err)
 
     if op_cache is None:
-        op_cache = operator_caching.generate_op_cache(operators, operators_bar, k, symbols)
+        op_cache = operator_compilation.compile_sympy(operators, operators_bar, k, symbols)
 
     LLbar = calc_LLbar(operators, operators_bar, observations, op_cache, fun_args)
     # optimization - if the returned object has an inv() method then use that
@@ -46,8 +43,6 @@ def collocate(operators, operators_bar, k, symbols, observations, op_cache=None,
 
     # finally return the posterior
     return CollocationPosterior(operators, operators_bar, op_cache, observations, LLbar_inv, fun_args)
-
-
 
 
 def calc_LLbar(operators, operators_bar, observations, op_cache, fun_args=None):

@@ -73,8 +73,8 @@ def sympy_function(sympy_expression, sympy_symbols, mode=None, lambdify_modules=
             flattened.append(s)
     if mode is None or mode.lower() == 'lambda':
         sympyd = lambdify(flattened, sympy_expression, modules=lambdify_modules)
-    elif mode.lower() == 'compile':
-        sympyd = autowrap.autowrap(sympy_expression, backend='cython', args=flattened)
+    elif mode.lower() in ['cython', 'fortran']:
+        sympyd = autowrap.autowrap(sympy_expression, backend=mode.lower(), args=flattened)
     else:
         raise Exception('Mode for generation of sympy function {} not understood.'.format(mode))
 
