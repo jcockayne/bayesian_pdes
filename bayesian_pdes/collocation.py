@@ -1,4 +1,9 @@
-import numpy as np
+try:
+    from autograd import numpy as np
+except:
+    print("Autograd not available; using standard numpy.")
+    import numpy as np
+
 import operator_compilation
 
 
@@ -31,15 +36,7 @@ def collocate(operators, operators_bar, k, symbols, observations, op_cache=None,
         op_cache = operator_compilation.compile_sympy(operators, operators_bar, k, symbols)
 
     LLbar = calc_LLbar(operators, operators_bar, observations, op_cache, fun_args)
-    # optimization - if the returned object has an inv() method then use that
-    # this is to make use of things like the kronecker inverse formula
-    if hasattr(LLbar, 'inv'):
-        # asarray this so that we aren't doing anything funky every time we .dot
-        LLbar_inv = np.asarray(LLbar.inv())
-    else:
-        LLbar_inv = np.linalg.inv(LLbar)
-
-    # and the observation vector...
+    LLbar_inv = np.linalg.inv(LLbar)
 
     # finally return the posterior
     return CollocationPosterior(operators, operators_bar, op_cache, observations, LLbar_inv, fun_args)
@@ -61,9 +58,9 @@ def calc_LLbar(operators, operators_bar, observations, op_cache, fun_args=None):
 
             applied = fun_op(points_1, points_2, *fun_args)
             tmp.append(applied)
-        LLbar.append(np.hstack(tmp))
+        LLbar.append(np.concatenate(tmp, axis=1))
 
-    return np.vstack(LLbar)
+    return np.concatenate(LLbar)
 
 
 def calc_side_matrices(operators, operators_bar, obs, test_points, op_cache, fun_args=None):
@@ -77,8 +74,8 @@ def calc_side_matrices(operators, operators_bar, obs, test_points, op_cache, fun
         fbar = op_cache[(op_bar,)]
         L.append(f(point, test_points, *fun_args))
         Lbar.append(fbar(test_points, point, *fun_args))
-    L = np.vstack(L)
-    Lbar = np.hstack(Lbar)
+    L = np.concatenate(L)
+    Lbar = np.concatenate(Lbar, axis=1)
     return L, Lbar
 
 
@@ -97,14 +94,14 @@ class CollocationPosterior(object):
     def posterior(self, test_points):
         g = np.concatenate([val for _, val in self.__obs])
         mu_multiplier, Sigma = self.no_obs_posterior(test_points)
-        return mu_multiplier.dot(g), Sigma
+        return np.dot(mu_multiplier, g), Sigma
 
     def no_obs_posterior(self, test_points):
         L, Lbar = calc_side_matrices(self.__operators, self.__operators_bar, self.__obs, test_points, self.__op_cache, self.__fun_args)
 
         k_eval = self.__op_cache[()]
-        mu_multiplier = Lbar.dot(self.__LLbar_inv)
+        mu_multiplier = np.dot(Lbar, self.__LLbar_inv)
         k_mat = k_eval(test_points, test_points, *self.__fun_args)
-        Sigma = k_mat - Lbar.dot(self.__LLbar_inv).dot(L)
+        Sigma = k_mat - np.dot(np.dot(Lbar, self.__LLbar_inv), L)
 
         return mu_multiplier, Sigma

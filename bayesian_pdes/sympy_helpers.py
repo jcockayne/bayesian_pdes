@@ -1,4 +1,7 @@
-import numpy as np
+try:
+    from autograd import numpy as np
+except:
+    import numpy as np
 
 
 def n_arg_applier(compiled_func, symbols):
@@ -73,7 +76,7 @@ def sympy_function(sympy_expression, sympy_symbols, mode=None, lambdify_modules=
             flattened.append(s)
     if mode is None or mode.lower() == 'lambda':
         sympyd = lambdify(flattened, sympy_expression, modules=lambdify_modules)
-    elif mode.lower() in ['cython', 'fortran']:
+    elif mode.lower() in ['cython', 'f2py']:
         sympyd = autowrap.autowrap(sympy_expression, backend=mode.lower(), args=flattened)
     else:
         raise Exception('Mode for generation of sympy function {} not understood.'.format(mode))
