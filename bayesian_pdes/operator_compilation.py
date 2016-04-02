@@ -2,8 +2,6 @@ from sympy_helpers import sympy_function, n_arg_applier
 import pairwise
 import numpy as np
 import hashlib
-from joblib import Memory
-from tempfile import mkdtemp
 
 
 def compile_sympy(operators, operators_bar, k, symbols, mode=None, sympy_function_kwargs=None, debug=False):
@@ -52,13 +50,22 @@ class CachingOpCache(object):
     def __getitem__(self, item):
         if item in self.__caches__:
             return self.__caches__[item]
-
-        cache_dir = mkdtemp()
         function = self.__base_op_cache__[item]
-        memcache = Memory(cachedir=cache_dir, verbose=0)
-        cache_function = memcache.cache(function)
+        cache_function = FunctionCache(function)
         self.__caches__[item] = cache_function
         return cache_function
+
+
+def make_args_hashable(*args, **kwargs):
+    args = list(args)
+
+    def __convert(item):
+        if type(item) is np.ndarray:
+            return HashableNumpyArray(item)
+        return item
+
+    key = tuple([__convert(a) for a in args])
+    return key
 
 
 class FunctionCache(object):
@@ -66,21 +73,32 @@ class FunctionCache(object):
         self.__base_function__ = base_function
         self.__arg_cache__ = {}
 
-    def __make_args_hashable__(self, *args, **kwargs):
-        args = list(args)
-        def __convert(item):
-            if type(item) is np.ndarray:
-                item = item.view(np.uint8)
-                h = hashlib.sha1(item).hexdigest()
-                return h
-            return item
-
-        return frozenset([__convert(a) for a in args])
-
     def __call__(self, *args, **kwargs):
-        hashable = self.__make_args_hashable__(*args)
+        hashable = make_args_hashable(*args)
         if hashable in self.__arg_cache__:
             return self.__arg_cache__[hashable]
         to_hash = self.__base_function__(*args)
         self.__arg_cache__[hashable] = to_hash
         return to_hash
+
+
+class HashableNumpyArray(object):
+    def __init__(self, array):
+        self.__array__ = array
+        self.__hash_value__ = None
+
+    def __hash__(self):
+        if self.__hash_value__ is None:
+            item = self.__array__.view(np.uint8)
+            digest = hashlib.sha1(item).hexdigest()
+            self.__hash_value__ = int(digest, 16)
+        return self.__hash_value__
+
+    def __eq__(self, other):
+        if type(other) is not HashableNumpyArray:
+            return False
+
+        if other.__array__ is self.__array__:
+            return True
+        return np.array_equal(self.__array__, other.__array__)
+
