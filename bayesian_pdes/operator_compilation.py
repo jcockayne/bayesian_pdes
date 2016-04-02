@@ -2,6 +2,8 @@ from sympy_helpers import sympy_function, n_arg_applier
 import pairwise
 import numpy as np
 import hashlib
+from joblib import Memory
+from tempfile import mkdtemp
 
 
 def compile_sympy(operators, operators_bar, k, symbols, mode=None, sympy_function_kwargs=None, debug=False):
@@ -50,8 +52,11 @@ class CachingOpCache(object):
     def __getitem__(self, item):
         if item in self.__caches__:
             return self.__caches__[item]
+
+        cache_dir = mkdtemp()
         function = self.__base_op_cache__[item]
-        cache_function = FunctionCache(function)
+        memcache = Memory(cachedir=cache_dir, verbose=0)
+        cache_function = memcache.cache(function)
         self.__caches__[item] = cache_function
         return cache_function
 
