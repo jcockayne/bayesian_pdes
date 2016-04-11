@@ -102,6 +102,13 @@ class CollocationPosterior(object):
         k_eval = self.__op_cache[()]
         mu_multiplier = np.dot(Lbar, self.__LLbar_inv)
         k_mat = k_eval(test_points, test_points, *self.__fun_args)
-        Sigma = k_mat - np.dot(np.dot(Lbar, self.__LLbar_inv), L)
+        Sigma = k_mat - np.dot(mu_multiplier, L)
 
         return mu_multiplier, Sigma
+
+    def diagonal_covariance(self, test_points):
+        ret = np.empty((test_points.shape[0], 1))
+        for i in xrange(test_points.shape[0]):
+            _, cov = self.no_obs_posterior(test_points[i, :][None, :])
+            ret[i, 0] = cov
+        return ret
