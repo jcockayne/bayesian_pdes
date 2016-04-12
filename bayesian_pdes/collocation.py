@@ -96,11 +96,20 @@ class CollocationPosterior(object):
         mu_multiplier, Sigma = self.no_obs_posterior(test_points)
         return np.dot(mu_multiplier, g), Sigma
 
+    def mean(self, test_points, g=None):
+        if g is None:
+            g = np.concatenate([val for _, val in self.__obs])
+        L, Lbar = calc_side_matrices(self.__operators, self.__operators_bar, self.__obs, test_points, self.__op_cache, self.__fun_args)
+        mu_multiplier = np.dot(Lbar, self.__LLbar_inv)
+
+        return np.dot(mu_multiplier, g)
+
     def no_obs_posterior(self, test_points):
         L, Lbar = calc_side_matrices(self.__operators, self.__operators_bar, self.__obs, test_points, self.__op_cache, self.__fun_args)
 
-        k_eval = self.__op_cache[()]
         mu_multiplier = np.dot(Lbar, self.__LLbar_inv)
+
+        k_eval = self.__op_cache[()]
         k_mat = k_eval(test_points, test_points, *self.__fun_args)
         Sigma = k_mat - np.dot(mu_multiplier, L)
 
