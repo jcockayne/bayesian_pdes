@@ -4,6 +4,18 @@ import numpy as np
 import hashlib
 
 
+class OperatorSystem(object):
+    def __init__(self, ops, ops_bar, compiled):
+        self.operators = ops
+        self.operators_bar = ops_bar
+        self.__compiled_operators__ = compiled
+
+    def __getitem__(self, item):
+        if type(item) is not tuple:
+            item = (item,)
+        return self.__compiled_operators__[item]
+
+
 def compile_sympy(operators, operators_bar, k, symbols, mode=None, sympy_function_kwargs=None, debug=False):
     ret = {
         tuple(): __functionize(k, symbols, mode=mode, sympy_function_kwargs=sympy_function_kwargs)
@@ -26,7 +38,7 @@ def compile_sympy(operators, operators_bar, k, symbols, mode=None, sympy_functio
             # no choice!!
             else:
                 ret[(op, op_bar)] = __functionize(op(op_bar(k)), symbols, mode=mode, sympy_function_kwargs=sympy_function_kwargs)
-    return ret
+    return OperatorSystem(operators, operators_bar, ret)
 
 
 # for now we only support sympy, maybe later support Theano?
@@ -47,6 +59,14 @@ class CachingOpCache(object):
         self.__base_op_cache__ = base_op_cache
         self.__caches__ = {}
 
+    @property
+    def operators(self):
+        return self.__base_op_cache__.operators
+
+    @property
+    def operators_bar(self):
+        return self.__base_op_cache__.operators_bar
+
     def __getitem__(self, item):
         if item in self.__caches__:
             return self.__caches__[item]
@@ -54,6 +74,9 @@ class CachingOpCache(object):
         cache_function = FunctionCache(function)
         self.__caches__[item] = cache_function
         return cache_function
+
+    def clear(self):
+        self.__caches__ = {}
 
 
 def make_args_hashable(*args, **kwargs):

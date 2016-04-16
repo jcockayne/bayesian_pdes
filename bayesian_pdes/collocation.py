@@ -44,8 +44,6 @@ def collocate(operators, operators_bar, k, symbols, observations, op_cache=None,
 
 def calc_LLbar(operators, operators_bar, observations, op_cache, fun_args=None):
     # and build the 2D matrix
-    if fun_args is None:
-        fun_args = []
     LLbar = []
 
     for op, obs_1 in zip(operators, observations):
@@ -56,7 +54,7 @@ def calc_LLbar(operators, operators_bar, observations, op_cache, fun_args=None):
 
             fun_op = op_cache[(op, op_bar)]
 
-            applied = fun_op(points_1, points_2, *fun_args)
+            applied = fun_op(points_1, points_2, fun_args)
             tmp.append(applied)
         LLbar.append(np.concatenate(tmp, axis=1))
 
@@ -64,16 +62,14 @@ def calc_LLbar(operators, operators_bar, observations, op_cache, fun_args=None):
 
 
 def calc_side_matrices(operators, operators_bar, obs, test_points, op_cache, fun_args=None):
-    if fun_args is None:
-        fun_args = []
     obs_points = np.r_[[p for p, _ in obs]]
     L = []
     Lbar = []
     for op, op_bar, point in zip(operators, operators_bar, obs_points):
         f = op_cache[(op,)]
         fbar = op_cache[(op_bar,)]
-        L.append(f(point, test_points, *fun_args))
-        Lbar.append(fbar(test_points, point, *fun_args))
+        L.append(f(point, test_points, fun_args))
+        Lbar.append(fbar(test_points, point, fun_args))
     L = np.concatenate(L)
     Lbar = np.concatenate(Lbar, axis=1)
     return L, Lbar
@@ -86,7 +82,7 @@ class CollocationPosterior(object):
         self.__op_cache = op_cache
         self.__obs = obs
         self.__LLbar_inv = LLbar_inv
-        self.__fun_args = [] if fun_args is None else fun_args
+        self.__fun_args = fun_args
 
     def __call__(self, test_points):
         return self.posterior(test_points)
@@ -110,7 +106,7 @@ class CollocationPosterior(object):
         mu_multiplier = np.dot(Lbar, self.__LLbar_inv)
 
         k_eval = self.__op_cache[()]
-        k_mat = k_eval(test_points, test_points, *self.__fun_args)
+        k_mat = k_eval(test_points, test_points, self.__fun_args)
         Sigma = k_mat - np.dot(mu_multiplier, L)
 
         return mu_multiplier, Sigma
