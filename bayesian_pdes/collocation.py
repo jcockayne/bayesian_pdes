@@ -32,6 +32,10 @@ def collocate(operators, operators_bar, k, symbols, observations, op_cache=None,
         if len(locs.shape) != 2:
             raise Exception("Obs locations must be two-dimensional " + err)
 
+    if len(operators) != len(observations):
+        raise Exception('Number of obs not consistent with number of operators ({} observations but {} operators)'
+                        .format(len(observations), len(operators)))
+
     if op_cache is None:
         op_cache = operator_compilation.compile_sympy(operators, operators_bar, k, symbols)
 

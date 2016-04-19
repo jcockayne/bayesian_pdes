@@ -105,7 +105,12 @@ class AllenCahnFactory(object):
                                                                          [[x_1, x_2], [y_1, y_2], length_scale],
                                                                         )
         arg_caching = bayesian_pdes.operator_compilation.CachingOpCache(op_cache_base)
-        self.__base_operator_system__ = arg_caching
+        self.__base_operator_system__ = op_cache_base
+        self.__caching_operator_system__ = arg_caching
 
-    def get_operator_system(self, delta, verbosity=0):
-        return AllenCahnOpSystem(self.__base_operator_system__, delta, verbosity)
+    def clear_cache(self):
+        self.__caching_operator_system__.clear()
+
+    def get_operator_system(self, delta, use_cache=False, verbosity=0):
+        base_system = self.__caching_operator_system__ if use_cache else self.__base_operator_system__
+        return AllenCahnOpSystem(base_system, delta, verbosity)
