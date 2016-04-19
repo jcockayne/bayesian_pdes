@@ -1,110 +1,162 @@
-__author__ = 'benorn'
-import bayesian_pdes as bpdes
-import itertools
+from __future__ import print_function
+import bayesian_pdes
 import numpy as np
-from problem_helpers import get_function, canonical_AAbar, canonical_A
+from util import NamedLambda
+
+class EITFactory(object):
+
+    def __init__(self, kernel, symbols, symbols_bar, extra_symbols, verbosity=0):
+        self.__verbosity__ = verbosity
+        x_1, x_2 = symbols
+        y_1, y_2 = symbols_bar
+
+        # Operators in the expanded version of the problem
+        A_1 = NamedLambda(lambda k: k.diff(x_1), 'A_1')
+        A_2 = NamedLambda(lambda k: k.diff(x_2), 'A_2')
+        A_3 = NamedLambda(lambda k: k.diff(x_1, x_1) + k.diff(x_2, x_2), 'A_3')
+
+        A_1_bar = NamedLambda(lambda k: k.diff(y_1), 'A_1_bar')
+        A_2_bar = NamedLambda(lambda k: k.diff(y_2), 'A_2_bar')
+        A_3_bar = NamedLambda(lambda k: k.diff(y_1, y_1) + k.diff(y_2, y_2), 'A_3_bar')
+
+        # Boundary operators
+        B = NamedLambda(lambda k: (k.diff(x_1)*x_1 + k.diff(x_2)*x_2), 'B')
+        B_bar = NamedLambda(lambda k: (k.diff(y_1)*y_1 + k.diff(y_2)*y_2), 'B_bar')
+
+        ops_base = [A_1, A_2, A_3, B]
+        ops_bar_base = [A_1_bar, A_2_bar, A_3_bar, B_bar]
+
+        # Labels for the transformed operators
+        A_t = 'A_t'
+        A_bar_t = 'A_bar_t'
+        B_t = 'B_t'
+        B_bar_t = 'B_bar_t'
+
+        self.__ops__ = [A_t, B_t]
+        self.__ops_bar__ = [A_bar_t, B_bar_t]
+
+        symbols = [symbols, symbols_bar]
+        if extra_symbols is not None:
+            symbols.append(extra_symbols)
+        op_cache_base = bayesian_pdes.operator_compilation.compile_sympy(
+            ops_base,
+            ops_bar_base,
+            kernel,
+            symbols,
+            mode='cython'
+        )
+        self.__base_op_cache__ = op_cache_base
+        self.__caching_op_cache__ = bayesian_pdes.operator_compilation.CachingOpCache(op_cache_base)
+
+    def clear_cache(self):
+        self.__caching_op_cache__.clear()
+        
+    def get_operator_system(self, kappa_int, kappa_bdy, grad_kappa_x, grad_kappa_y, use_cache=False):
+        op_cache = self.__caching_op_cache__ if use_cache else self.__base_op_cache__
+        return EITOperatorSystem(self.__ops__,
+                                 self.__ops_bar__,
+                                 op_cache,
+                                 kappa_int,
+                                 kappa_bdy,
+                                 grad_kappa_x,
+                                 grad_kappa_y,
+                                 self.__verbosity__)
 
 
-class FastEITMatrixComputer(object):
-    def __init__(self, interior, boundary, eval_pts, kernel, symbols):
-        # build application matrices
-        int = {}
-        bdy = {}
-        int_bdy = {}
-        int_eval = {}
-        bdy_eval = {}
+class EITOperatorSystem(object):
+    def __init__(self, operators, operators_bar, op_cache, kappa_int, kappa_bdy, grad_kappa_x, grad_kappa_y, verbosity=0):
+        self.operators = operators
+        self.operators_bar = operators_bar
+        self.__op_cache__ = op_cache
+        self.__kappa_int__ = kappa_int
+        self.__kappa_bdy__ = kappa_bdy
+        self.__grad_kappa_x__ = grad_kappa_x
+        self.__grad_kappa_y__ = grad_kappa_y
+        self.__verbosity__ = verbosity
 
-        for a,b in itertools.product(symbols[0], symbols[1]):
-            # interiors
-            int[(a, b)] = int[(b, a)] = get_function(kernel, (a, b), symbols, interior, interior)
-            int[(a,a,b,b)] = int[(b,b,a,a)] = get_function(kernel, (a,a,b,b), symbols, interior, interior)
-            int[(a,b,b)] = int[(b,b,a)] = get_function(kernel, (a,b,b), symbols, interior, interior)
-            int[(a,a,b)] = int[(b,a,a)] = get_function(kernel, (a,a,b), symbols, interior, interior)
+    def __getitem__(self, item):
+        return self.do_transform(item)
 
-            # boundaries
-            bdy[(a,b)] = bdy[(b,a)] = get_function(kernel, (a,b), symbols, boundary, boundary)
+    def do_transform(self, item):
+        if type(item) is not tuple:
+            item = (item,)
+        def printer(*args):
+            if self.__verbosity__ > 0:
+                print(*args)
 
-            # interior-boundary crossover
-            int_bdy[(a,b)] = int_bdy[(b,a)] = get_function(kernel, (a,b), symbols, interior, boundary)
-            int_bdy[(a,a,b)] = int_bdy[b,a,a] = get_function(kernel, (a,a,b), symbols, interior, boundary)
+        printer('Attempting to get {}'.format(item))
 
-            # interior-eval crossover
-            int_eval[(a)] = get_function(kernel, (a,), symbols, interior, eval_pts)
-            int_eval[(a,a)] = get_function(kernel, (a,a), symbols, interior, eval_pts)
+        A_t, B_t = self.operators
+        A_bar_t, B_bar_t = self.operators_bar
 
-            # bdy-eval crossover
-            bdy_eval[(a)] = get_function(kernel, (a,), symbols, boundary, eval_pts)
+        A_1, A_2, A_3, B = self.__op_cache__.operators
+        A_1_bar, A_2_bar, A_3_bar, B_bar = self.__op_cache__.operators_bar
 
-        self.__interior = interior
-        self.__boundary = boundary
-        self.__matrices_int = int
-        self.__matrices_bdy = bdy
-        self.__matrices_int_bdy = int_bdy
-        self.__matrices_int_eval = int_eval
-        self.__matrices_bdy_eval = bdy_eval
-        self.__symbols = symbols
+        exp_kappa_int = np.exp(self.__kappa_int__).reshape((len(self.__kappa_int__), 1))
+        exp_kappa_bdy = np.exp(self.__kappa_bdy__).reshape((len(self.__kappa_bdy__), 1))
+        grad_kappa_x = self.__grad_kappa_x__.reshape((len(self.__grad_kappa_x__), 1))
+        grad_kappa_y = self.__grad_kappa_y__.reshape((len(self.__grad_kappa_y__), 1))
 
+        all_things = [()]
 
-    def AAbar(self, kappa, kappa_x, kappa_y):
-        interior = self.__interior
-        matrices_int = self.__matrices_int
-        return canonical_AAbar(interior, matrices_int, self.__symbols, kappa, kappa_x, kappa_y)
+        printer(exp_kappa_int.shape, exp_kappa_bdy.shape, grad_kappa_x.shape, grad_kappa_y.shape)
 
-    # bdy
-    def BBbar(self, kappa, kappa_x, kappa_y):
-        bdy = self.__boundary
-        interior = self.__interior
-        matrices_bdy = self.__matrices_bdy
-        x_1, x_2 = self.__symbols[0]
-        y_1, y_2 = self.__symbols[1]
+        # first explode out the objects required
+        for i in item:
+            if i == A_t:
+                all_things = sum([[a + (A_1,), a + (A_2,), a + (A_3,)] for a in all_things], [])
+            elif i == A_bar_t:
+                all_things = sum([[a + (A_1_bar,), a + (A_2_bar,), a + (A_3_bar,)] for a in all_things], [])
+            elif i == B_t:
+                all_things = [a + (B,) for a in all_things]
+            elif i == B_bar_t:
+                all_things = [a + (B_bar,) for a in all_things]
+            else:
+                all_things = [a + (i,) for a in all_things]
+        printer('Mapped {} to {}'.format(item, all_things))
 
-        kappa = kappa[interior.shape[0]:kappa.shape[0]].reshape((bdy.shape[0], 1))
-        x = bdy[:,0].reshape((bdy.shape[0], 1))
-        y = bdy[:,1].reshape((bdy.shape[0], 1))
+        def __calc_result(x,y,fun_args=None):
+            result = 0
+            for item in all_things:
+                try:
+                    function = self.__op_cache__[item]
+                except Exception as ex:
+                    printer('Failed to get {}'.format(item))
+                    raise ex
+                new_mat = function(x, y, fun_args)
 
-        return np.exp(kappa).dot(np.exp(kappa.T)) * (x.dot(x.T) * matrices_bdy[(x_1, y_1)] + x.dot(y.T) * matrices_bdy[(x_1, y_2)] \
-            + y.dot(x.T) * matrices_bdy[(x_2, y_1)] + y.dot(y.T) * matrices_bdy[(x_2, y_2)])
+                # unbarred
+                if A_1 in item:
+                    printer('Transforming A_1')
+                    multiplier = np.repeat(grad_kappa_x*exp_kappa_int, y.shape[0], 1)
+                    new_mat = multiplier * new_mat
+                elif A_2 in item:
+                    printer('Transforming A_2')
+                    multiplier = np.repeat(grad_kappa_y*exp_kappa_int, y.shape[0], 1)
+                    new_mat = multiplier * new_mat
+                elif A_3 in item:
+                    printer('Transforming A_3')
+                    multiplier = np.repeat(exp_kappa_int, y.shape[0], 1)
+                    new_mat = multiplier * new_mat
 
+                # barred
+                if A_1_bar in item:
+                    printer('Transforming A_1_bar')
+                    new_mat = np.repeat(grad_kappa_x.T*exp_kappa_int.T,x.shape[0],0) * new_mat
+                elif A_2_bar in item:
+                    printer('Transforming A_2_bar')
+                    new_mat = np.repeat(grad_kappa_y.T*exp_kappa_int.T,x.shape[0],0) * new_mat
+                elif A_3_bar in item:
+                    printer('Transforming A_3_bar')
+                    new_mat = np.repeat(exp_kappa_int.T,x.shape[0],0) * new_mat
 
-    def ABbar(self, kappa, kappa_x, kappa_y):
-        bdy = self.__boundary
-        interior = self.__interior
-        matrices_int_bdy = self.__matrices_int_bdy
-        x_1, x_2 = self.__symbols[0]
-        y_1, y_2 = self.__symbols[1]
-
-        x = bdy[:,0].reshape((bdy.shape[0], 1))
-        y = bdy[:,1].reshape((bdy.shape[0], 1))
-        kappa_int = kappa[:interior.shape[0]].reshape((interior.shape[0], 1))
-        kappa_bdy = kappa[interior.shape[0]:kappa.shape[0]].reshape((bdy.shape[0], 1))
-        kappa_x = kappa_x[:interior.shape[0]].reshape((interior.shape[0], 1))
-        kappa_y = kappa_y[:interior.shape[0]].reshape((interior.shape[0], 1))
-
-        term_a = kappa_x.dot(x.T) * matrices_int_bdy[(x_1, y_1)] \
-            + kappa_x.dot(y.T) * matrices_int_bdy[(x_1, y_2)] \
-            + kappa_y.dot(x.T) * matrices_int_bdy[(x_2, y_1)] \
-            + kappa_y.dot(y.T) * matrices_int_bdy[(x_2, y_2)]
-        term_b = x.T * matrices_int_bdy[(x_1, x_1, y_1)] \
-            + y.T * matrices_int_bdy[(x_1, x_1, y_2)] \
-            + x.T * matrices_int_bdy[(x_2, x_2, y_1)] \
-            + y.T * matrices_int_bdy[(x_2, x_2, y_2)]
-
-        return np.exp(kappa_int).dot(np.exp(kappa_bdy.T)) * (term_a + term_b)
-
-    def A(self, kappa, kappa_x, kappa_y):
-        interior = self.__interior
-        matrices_int_eval = self.__matrices_int_eval
-        return canonical_A(interior, matrices_int_eval, self.__symbols, kappa, kappa_x, kappa_y)
-
-    def B(self, kappa, kappa_x, kappa_y):
-        bdy = self.__boundary
-        x_1, x_2 = self.__symbols[0]
-        matrices_bdy_eval = self.__matrices_bdy_eval
-        shape = (bdy.shape[0], 1)
-
-        kappa = kappa[-bdy.shape[0]:].reshape(shape)
-
-        x = bdy[:,0].reshape((bdy.shape[0], 1))
-        y = bdy[:,1].reshape((bdy.shape[0], 1))
-
-        return np.exp(kappa) * (x * matrices_bdy_eval[(x_1)] + y * matrices_bdy_eval[(x_2)])
+                # boundary
+                if B in item:
+                    printer('Transforming B')
+                    new_mat = np.repeat(exp_kappa_bdy, y.shape[0], 1) * new_mat
+                if B_bar in item:
+                    printer('Transforming B_bar')
+                    new_mat = np.repeat(exp_kappa_bdy.T, x.shape[0], 0) * new_mat
+                result += new_mat
+            return result
+        return __calc_result
