@@ -87,10 +87,10 @@ class AllenCahnOpSystem(object):
 
 
 class AllenCahnFactory(object):
-    def __init__(self):
-        length_scale = sp.Symbol('sigma')
-        x_1, x_2, y_1, y_2 = sp.symbols('x_1 x_2 y_1 y_2')
-        k_sqexp = sp.exp(-((x_1 - y_1)**2 + (x_2 - y_2)**2) / (2*length_scale**2))
+    def __init__(self, k, symbols, symbols_bar, extra_symbols):
+        x_1, x_2 = symbols
+        y_1, y_2 = symbols_bar
+        
         A_1 = NamedLambda(lambda k: k.diff(x_1, x_1) + k.diff(x_2, x_2), 'A_1')
         A_1_bar = NamedLambda(lambda k: k.diff(y_1, y_1) + k.diff(y_2, y_2), 'A_1_bar')
         A_2 = NamedLambda(lambda k: k, 'A_2')
@@ -101,8 +101,8 @@ class AllenCahnFactory(object):
 
         op_cache_base = bayesian_pdes.operator_compilation.compile_sympy([A_1, A_2, B_1, Identity],
                                                                          [A_1_bar, A_2_bar, B_1_bar, Identity],
-                                                                         k_sqexp,
-                                                                         [[x_1, x_2], [y_1, y_2], length_scale],
+                                                                         k,
+                                                                         [symbols, symbols_bar, extra_symbols],
                                                                         )
         arg_caching = bayesian_pdes.operator_compilation.CachingOpCache(op_cache_base)
         self.__base_operator_system__ = op_cache_base
