@@ -5,7 +5,7 @@ from util import NamedLambda
 
 class EITFactory(object):
 
-    def __init__(self, kernel, symbols, symbols_bar, extra_symbols, verbosity=0):
+    def __init__(self, kernel, symbols, symbols_bar, extra_symbols, compile_mode=None, verbosity=0):
         self.__verbosity__ = verbosity
         x_1, x_2 = symbols
         y_1, y_2 = symbols_bar
@@ -43,14 +43,14 @@ class EITFactory(object):
             ops_bar_base,
             kernel,
             symbols,
-            mode='cython'
+            mode=compile_mode
         )
         self.__base_op_cache__ = op_cache_base
         self.__caching_op_cache__ = bayesian_pdes.operator_compilation.CachingOpCache(op_cache_base)
 
     def clear_cache(self):
         self.__caching_op_cache__.clear()
-        
+
     def get_operator_system(self, kappa_int, kappa_bdy, grad_kappa_x, grad_kappa_y, use_cache=False):
         op_cache = self.__caching_op_cache__ if use_cache else self.__base_op_cache__
         return EITOperatorSystem(self.__ops__,
@@ -115,48 +115,70 @@ class EITOperatorSystem(object):
                 all_things = [a + (i,) for a in all_things]
         printer('Mapped {} to {}'.format(item, all_things))
 
-        def __calc_result(x,y,fun_args=None):
-            result = 0
-            for item in all_things:
-                try:
-                    function = self.__op_cache__[item]
-                except Exception as ex:
-                    printer('Failed to get {}'.format(item))
-                    raise ex
-                new_mat = function(x, y, fun_args)
+        def __ret(x, y, fun_args=None):
+            return self.calc_result(
+                x,
+                y,
+                fun_args,
+                all_things,
+                exp_kappa_int,
+                exp_kappa_bdy,
+                grad_kappa_x,
+                grad_kappa_y
+            )
+        return __ret
 
-                # unbarred
-                if A_1 in item:
-                    printer('Transforming A_1')
-                    multiplier = np.repeat(grad_kappa_x*exp_kappa_int, y.shape[0], 1)
-                    new_mat = multiplier * new_mat
-                elif A_2 in item:
-                    printer('Transforming A_2')
-                    multiplier = np.repeat(grad_kappa_y*exp_kappa_int, y.shape[0], 1)
-                    new_mat = multiplier * new_mat
-                elif A_3 in item:
-                    printer('Transforming A_3')
-                    multiplier = np.repeat(exp_kappa_int, y.shape[0], 1)
-                    new_mat = multiplier * new_mat
+    def calc_result(self, x, y, fun_args, all_things, exp_kappa_int, exp_kappa_bdy, grad_kappa_x, grad_kappa_y):
+        result = 0
 
-                # barred
-                if A_1_bar in item:
-                    printer('Transforming A_1_bar')
-                    new_mat = np.repeat(grad_kappa_x.T*exp_kappa_int.T,x.shape[0],0) * new_mat
-                elif A_2_bar in item:
-                    printer('Transforming A_2_bar')
-                    new_mat = np.repeat(grad_kappa_y.T*exp_kappa_int.T,x.shape[0],0) * new_mat
-                elif A_3_bar in item:
-                    printer('Transforming A_3_bar')
-                    new_mat = np.repeat(exp_kappa_int.T,x.shape[0],0) * new_mat
+        A_1, A_2, A_3, B = self.__op_cache__.operators
+        A_1_bar, A_2_bar, A_3_bar, B_bar = self.__op_cache__.operators_bar
 
-                # boundary
-                if B in item:
-                    printer('Transforming B')
-                    new_mat = np.repeat(exp_kappa_bdy, y.shape[0], 1) * new_mat
-                if B_bar in item:
-                    printer('Transforming B_bar')
-                    new_mat = np.repeat(exp_kappa_bdy.T, x.shape[0], 0) * new_mat
-                result += new_mat
-            return result
-        return __calc_result
+        def printer(*args):
+            if self.__verbosity__ > 0:
+                print(*args)
+
+        for item in all_things:
+            try:
+                function = self.__op_cache__[item]
+            except Exception as ex:
+                printer('Failed to get {}'.format(item))
+                raise ex
+            new_mat = function(x, y, fun_args)
+
+
+
+            # unbarred
+            if A_1 in item:
+                printer('Transforming A_1')
+                multiplier = np.repeat(grad_kappa_x*exp_kappa_int, y.shape[0], 1)
+                new_mat = multiplier * new_mat
+            elif A_2 in item:
+                printer('Transforming A_2')
+                multiplier = np.repeat(grad_kappa_y*exp_kappa_int, y.shape[0], 1)
+                new_mat = multiplier * new_mat
+            elif A_3 in item:
+                printer('Transforming A_3')
+                multiplier = np.repeat(exp_kappa_int, y.shape[0], 1)
+                new_mat = multiplier * new_mat
+
+            # barred
+            if A_1_bar in item:
+                printer('Transforming A_1_bar')
+                new_mat = np.repeat(grad_kappa_x.T*exp_kappa_int.T,x.shape[0],0) * new_mat
+            elif A_2_bar in item:
+                printer('Transforming A_2_bar')
+                new_mat = np.repeat(grad_kappa_y.T*exp_kappa_int.T,x.shape[0],0) * new_mat
+            elif A_3_bar in item:
+                printer('Transforming A_3_bar')
+                new_mat = np.repeat(exp_kappa_int.T,x.shape[0],0) * new_mat
+
+            # boundary
+            if B in item:
+                printer('Transforming B')
+                new_mat = np.repeat(exp_kappa_bdy, y.shape[0], 1) * new_mat
+            if B_bar in item:
+                printer('Transforming B_bar')
+                new_mat = np.repeat(exp_kappa_bdy.T, x.shape[0], 0) * new_mat
+            result += new_mat
+        return result

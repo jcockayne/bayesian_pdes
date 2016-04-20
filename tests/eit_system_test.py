@@ -60,7 +60,7 @@ def compare_mats(sigma_fact, interior, bdy, length_scale):
     kappa_x = np.vectorize(sp.lambdify([x_1, x_2], sigma.diff(x_1)))(interior[:, 0], interior[:, 1])
     kappa_y = np.vectorize(sp.lambdify([x_1, x_2], sigma.diff(x_2)))(interior[:, 0], interior[:, 1])
 
-    fact = eit.EITFactory(k_sqexp, [x_1, x_2], [y_1, y_2], None, 1)
+    fact = eit.EITFactory(k_sqexp, [x_1, x_2], [y_1, y_2], extra_symbols=None, verbosity=1)
     my_oc = fact.get_operator_system(kappa_int, kappa_bdy, kappa_x, kappa_y)
 
     ops_test, ops_bar_test, oc_test = test_function(length_scale, sigma, sigma_bar)
