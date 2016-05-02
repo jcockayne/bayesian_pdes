@@ -63,3 +63,8 @@ experiments/
 # cython
 *.c
 *.so
+
+# outputs
+notebooks/figures
+notebooks/eit_results
+notebooks/allen_cahn_results
