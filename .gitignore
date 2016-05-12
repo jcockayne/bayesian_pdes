@@ -65,6 +65,6 @@ experiments/
 *.so
 
 # outputs
-notebooks/figures
-notebooks/eit_results
-notebooks/allen_cahn_results
+notebooks/figures/
+notebooks/eit_results/
+notebooks/allen_cahn_results/
