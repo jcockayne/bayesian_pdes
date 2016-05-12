@@ -31,7 +31,7 @@ class AllenCahnSystemTest(unittest.TestCase):
             mode='cython'
         )
 
-        op_system_factory = allen_cahn.AllenCahnFactory()
+        op_system_factory = allen_cahn.AllenCahnFactory(k_sqexp, [x_1, x_2], [y_1, y_2])
         my_op_system = op_system_factory.get_operator_system(delta, 1)
 
         true_ops = my_op_system.operators

@@ -93,3 +93,5 @@ class EitSystemTest(unittest.TestCase):
         compare_mats(lambda x, y: sp.Number(0), interior, bdy, 0.2)
         compare_mats(lambda x, y: (x+y)**2, interior, bdy, 0.2)
         compare_mats(lambda x, y: sp.cos(2*sp.pi*x)*sp.cos(2*sp.pi*y), interior, bdy, 0.2)
+        true_diff = lambda x_1, x_2: sp.exp(-((x_1 - 0.4)**2 + (x_2 - 0.4)**2) / (2*0.2**2)) + sp.exp(-((x_1 + 0.4)**2 + (x_2 + 0.4)**2) / (2*0.2**2))
+        compare_mats(lambda x, y: sp.log(true_diff(x, y)), interior, bdy, 0.2)
