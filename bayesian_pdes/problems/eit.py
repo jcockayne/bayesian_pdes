@@ -1,7 +1,11 @@
 from __future__ import print_function
 import bayesian_pdes
-import numpy as np
+try:
+    from autograd import numpy as np
+except Exception as ex:
+    import numpy as np
 from util import NamedLambda
+
 
 class EITFactory(object):
 
