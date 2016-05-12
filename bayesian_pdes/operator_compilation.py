@@ -112,7 +112,7 @@ class HashableNumpyArray(object):
 
     def __hash__(self):
         if self.__hash_value__ is None:
-            item = self.__array__.view(np.uint8)
+            item = np.ascontiguousarray(self.__array__).view(np.uint8)
             digest = hashlib.sha1(item).hexdigest()
             self.__hash_value__ = int(digest, 16)
         return self.__hash_value__
