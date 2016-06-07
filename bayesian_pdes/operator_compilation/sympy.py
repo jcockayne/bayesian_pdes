@@ -1,7 +1,8 @@
-from sympy_helpers import sympy_function, n_arg_applier
+from bayesian_pdes.sympy_helpers import sympy_function, n_arg_applier
 import pairwise
 import numpy as np
 import hashlib
+import compilation_utils
 
 
 class OperatorSystem(object):
@@ -38,6 +39,7 @@ def compile_sympy(operators, operators_bar, k, symbols, mode=None, sympy_functio
             # no choice!!
             else:
                 ret[(op, op_bar)] = __functionize(op(op_bar(k)), symbols, mode=mode, sympy_function_kwargs=sympy_function_kwargs)
+    compilation_utils.infill_op_dict(operators, operators_bar, ret)
     return OperatorSystem(operators, operators_bar, ret)
 
 
