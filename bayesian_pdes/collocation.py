@@ -5,6 +5,9 @@ except:
     import numpy as np
 
 import operator_compilation
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def collocate(operators, operators_bar, k, symbols, observations, op_cache=None, fun_args=None):
@@ -66,12 +69,13 @@ def calc_LLbar(operators, operators_bar, observations, op_cache, fun_args=None):
 
 
 def calc_side_matrices(operators, operators_bar, obs, test_points, op_cache, fun_args=None):
-    obs_points = np.r_[[p for p, _ in obs]]
+    obs_points = [p for p, _ in obs]
     L = []
     Lbar = []
     for op, op_bar, point in zip(operators, operators_bar, obs_points):
         f = op_cache[(op,)]
         fbar = op_cache[(op_bar,)]
+        logging.info('Applying {}, {} to points ({}) and test points ({})'.format(op, op_bar, point.shape, test_points.shape))
         L.append(f(point, test_points, fun_args))
         Lbar.append(fbar(test_points, point, fun_args))
     L = np.concatenate(L)
