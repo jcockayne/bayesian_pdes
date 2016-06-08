@@ -5,6 +5,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def augment_with_time(spatial_points, time):
+    return np.column_stack([spatial_points, time*np.ones((spatial_points.shape[0], 1))])
+
+
 def solve_parabolic(op_system, times, obs_function, test_function, ics, fun_args=None):
     ops = op_system.operators
     ops_bar = op_system.operators_bar
@@ -20,12 +24,12 @@ def solve_parabolic(op_system, times, obs_function, test_function, ics, fun_args
     last_inv = np.linalg.inv(K_0)
 
     right, left = collocation.calc_side_matrices(
-        ops,
-        ops_bar,
+        init_ops,
+        init_ops_bar,
         ics,
         test_t,
         op_system,
-        fun_args)
+        fun_args=fun_args)
     kern = op_system[()](test_t, test_t, fun_args)
     covs = [kern - np.dot(left, np.dot(last_inv, right))]
     rhs = ics[0][1]
@@ -51,10 +55,10 @@ def solve_parabolic(op_system, times, obs_function, test_function, ics, fun_args
                 o,
                 test_t,
                 op_system,
-                fun_args)
+                fun_args=fun_args)
             rmat.append(right)
             lmat.append(left)
-            K_ttm1.append(calc_diff_LLbar(this_ops, ops_bar, o, obs_t, op_system, fun_args))
+            K_ttm1.append(calc_diff_LLbar(this_ops, ops_bar, o, obs_t, op_system, fun_args=fun_args))
 
         logger.debug('Concatenating K_ttm1; shapes are [{}]'.format([k.shape for k in K_ttm1]))
         K_ttm1 = np.concatenate(K_ttm1)
@@ -72,7 +76,7 @@ def solve_parabolic(op_system, times, obs_function, test_function, ics, fun_args
             obs_t,
             test_t,
             op_system,
-            fun_args)
+            fun_args=fun_args)
         rmat.append(right)
         lmat.append(left)
         right = np.concatenate(rmat)
