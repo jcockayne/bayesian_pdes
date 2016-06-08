@@ -68,29 +68,49 @@ def calc_LLbar(operators, operators_bar, observations, op_cache, fun_args=None):
     return np.concatenate(LLbar)
 
 
-def calc_side_matrices(operators, operators_bar, obs, test_points, op_cache, fun_args=None):
+def calc_side_matrices(operators, operators_bar, obs, test_points, op_cache, fun_args=None, outer_ops=None):
     obs_points = [p for p, _ in obs]
     L = []
     Lbar = []
-    for op, op_bar, point in zip(operators, operators_bar, obs_points):
-        f = op_cache[(op,)]
-        fbar = op_cache[(op_bar,)]
-        logging.info('Applying {}, {} to points ({}) and test points ({})'.format(op, op_bar, point.shape, test_points.shape))
-        L.append(f(point, test_points, fun_args))
-        Lbar.append(fbar(test_points, point, fun_args))
-    L = np.concatenate(L)
-    Lbar = np.concatenate(Lbar, axis=1)
-    return L, Lbar
+    Identity = ()
+    if outer_ops is None:
+        outer_ops = [[Identity], [Identity]]
+    outer_ops_bar = outer_ops[1]
+    outer_ops = outer_ops[0]
+
+    row = []
+    row_bar = []
+    for outer_op in outer_ops:
+        col = []
+        col_bar = []
+        for outer_op_bar in outer_ops_bar:
+            for op, op_bar, point in zip(operators, operators_bar, obs_points):
+                f = op_cache[(op, outer_op_bar)]
+                fbar = op_cache[(op_bar, outer_op)]
+                logging.info('Applying {}, {} to points ({}) and test points ({})'
+                             .format((op, outer_op_bar), (op_bar, outer_op), point.shape, test_points.shape))
+                L.append(f(point, test_points, fun_args))
+                Lbar.append(fbar(test_points, point, fun_args))
+            L = np.concatenate(L)
+            Lbar = np.concatenate(Lbar, axis=1)
+            col.append(L)
+            col_bar.append(Lbar)
+        row.append(np.column_stack(col))
+        row_bar.append(np.column_stack(col_bar))
+    row = np.row_stack(row)
+    row_bar = np.row_stack(row_bar)
+    return row, row_bar
 
 
 class CollocationPosterior(object):
-    def __init__(self, operators, operators_bar, op_cache, obs, LLbar_inv, fun_args=None):
+    def __init__(self, operators, operators_bar, op_cache, obs, LLbar_inv, my_ops=None, fun_args=None):
         self.__operators = operators
         self.__operators_bar = operators_bar
         self.__op_cache = op_cache
         self.__obs = obs
         self.__LLbar_inv = LLbar_inv
         self.__fun_args = fun_args
+        self.__outer_ops__ = my_ops
 
     def __call__(self, test_points):
         return self.posterior(test_points)
@@ -103,13 +123,27 @@ class CollocationPosterior(object):
     def mean(self, test_points, g=None):
         if g is None:
             g = np.concatenate([val for _, val in self.__obs])
-        L, Lbar = calc_side_matrices(self.__operators, self.__operators_bar, self.__obs, test_points, self.__op_cache, self.__fun_args)
+        L, Lbar = calc_side_matrices(
+            self.__operators,
+            self.__operators_bar,
+            self.__obs,
+            test_points,
+            self.__op_cache,
+            self.__outer_ops__,
+            self.__fun_args)
         mu_multiplier = np.dot(Lbar, self.__LLbar_inv)
 
         return np.dot(mu_multiplier, g)
 
     def no_obs_posterior(self, test_points):
-        L, Lbar = calc_side_matrices(self.__operators, self.__operators_bar, self.__obs, test_points, self.__op_cache, self.__fun_args)
+        L, Lbar = calc_side_matrices(
+            self.__operators,
+            self.__operators_bar,
+            self.__obs,
+            test_points,
+            self.__op_cache,
+            self.__outer_ops__,
+            self.__fun_args)
 
         mu_multiplier = np.dot(Lbar, self.__LLbar_inv)
 
@@ -125,3 +159,15 @@ class CollocationPosterior(object):
             _, cov = self.no_obs_posterior(test_points[i, :][None, :])
             ret[i, 0] = cov
         return ret
+
+    def apply_operator(self, op, op_bar):
+        if self.__outer_ops__ is not None:
+            raise Exception('Application of an operator to a posterior which has already been operated upon is not supported!')
+        return CollocationPosterior(self.__operators,
+                                    self.__operators_bar,
+                                    self.__op_cache,
+                                    self.__obs,
+                                    self.__LLbar_inv,
+                                    (op, op_bar),
+                                    self.__fun_args
+                                    )
