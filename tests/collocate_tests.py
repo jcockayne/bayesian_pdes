@@ -25,12 +25,13 @@ class CollocateTests(unittest.TestCase):
 
         print interior.shape, interior_obs.shape
         print exterior.shape, exterior_obs.shape
+
+        op_system = bayesian_pdes.operator_compilation.compile_sympy([A, B], [Abar, Bbar], k, [[x], [y]])
         posterior = bayesian_pdes.collocate(
             [A, B],
             [Abar, Bbar],
-            k,
-            [x,y],
-            [(interior, interior_obs), (exterior, exterior_obs)]
+            [(interior, interior_obs), (exterior, exterior_obs)],
+            op_system
         )
 
         mean, cov = posterior(interior)
@@ -63,12 +64,13 @@ class CollocateTests(unittest.TestCase):
 
         print interior.shape, interior_obs.shape
         print exterior.shape, exterior_obs.shape
+
+        op_system = bayesian_pdes.operator_compilation.compile_sympy([A, B], [Abar, Bbar], k, [[x_1, x_2], [y_1, y_2]])
         posterior = bayesian_pdes.collocate(
             [A, B],
             [Abar, Bbar],
-            k,
-            [[x_1, x_2], [y_1, y_2]],
-            [(interior, interior_obs), (exterior, exterior_obs)]
+            [(interior, interior_obs), (exterior, exterior_obs)],
+            op_system
         )
 
         import time
