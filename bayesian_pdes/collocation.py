@@ -4,28 +4,25 @@ except:
     print("Autograd not available; using standard numpy.")
     import numpy as np
 
-import operator_compilation
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-def collocate(operators, operators_bar, k, symbols, observations, op_cache=None, fun_args=None):
+def collocate(operators, operators_bar, observations, op_system, fun_args=None):
     """
     Construct a collocation approximation to the system of operators supplied.
     :param operators: List of operators operators (as functions which operate on sympy expressions)
     :param operators_bar: List of operators working on the second argument of the kernel.
-    :param k: The kernel itself, as a sympy expression
-    :param symbols: Sympy symbols for the kernel. Note that thanks to sympy being a bit peculiar we can't easily use
-    vector operations here - instead each component must be supplied separately if we are working in a higher-dimensional
-    space.
-    In this event, the sympy symbols should be grouped into sub-lists according to which vector they belong to,
-    eg. [[x_1, x_2], [y_1, y_2]]
     :param observations: List of observations. Size should match the size of the list of operators.
     It should be a list of tuples, [(obs locations, obs values)], where obs locations has m rows and d columns and
     values has m rows and 1 column. Here m is the number of points observed and d is the dimension of each point.
-    :return: A function which, when given a set of test points, returns the posterior mean and covariance at those
-    points.
+    :param op_system: The operator system, which gives access to the compiled kernel for each combination of ops.
+    Minimum requirement for this is that it should function as a dictionary accepting tuples of combinations
+    of operators, and returning functions which produce gram matrices.
+    :param fun_args: array of scalar extra arguments which are to be passed to the functions from the operator
+    system.
+    :return: CollocationPosterior for the supplied operators and observations.
     """
     for locs, vals in observations:
         if vals is None: continue
@@ -39,14 +36,11 @@ def collocate(operators, operators_bar, k, symbols, observations, op_cache=None,
         raise Exception('Number of obs not consistent with number of operators ({} observations but {} operators)'
                         .format(len(observations), len(operators)))
 
-    if op_cache is None:
-        op_cache = operator_compilation.compile_sympy(operators, operators_bar, k, symbols)
-
-    LLbar = calc_LLbar(operators, operators_bar, observations, op_cache, fun_args)
+    LLbar = calc_LLbar(operators, operators_bar, observations, op_system, fun_args)
     LLbar_inv = np.linalg.inv(LLbar)
 
     # finally return the posterior
-    return CollocationPosterior(operators, operators_bar, op_cache, observations, LLbar_inv, fun_args)
+    return CollocationPosterior(operators, operators_bar, op_system, observations, LLbar_inv, fun_args)
 
 
 def calc_LLbar(operators, operators_bar, observations, op_cache, fun_args=None):
@@ -69,9 +63,11 @@ def calc_LLbar(operators, operators_bar, observations, op_cache, fun_args=None):
 
 
 def calc_side_matrices(operators, operators_bar, obs, test_points, op_cache, fun_args=None, outer_ops=None):
+    logger.debug('Calculating side matrices for {} operators; test points of shape {}'.format(
+        len(operators),
+        test_points.shape)
+    )
     obs_points = [p for p, _ in obs]
-    L = []
-    Lbar = []
     Identity = ()
     if outer_ops is None:
         outer_ops = [[Identity], [Identity]]
@@ -80,37 +76,43 @@ def calc_side_matrices(operators, operators_bar, obs, test_points, op_cache, fun
 
     row = []
     row_bar = []
-    for outer_op in outer_ops:
-        col = []
-        col_bar = []
-        for outer_op_bar in outer_ops_bar:
-            for op, op_bar, point in zip(operators, operators_bar, obs_points):
-                f = op_cache[(op, outer_op_bar)]
-                fbar = op_cache[(op_bar, outer_op)]
-                logging.info('Applying {}, {} to points ({}) and test points ({})'
-                             .format((op, outer_op_bar), (op_bar, outer_op), point.shape, test_points.shape))
-                L.append(f(point, test_points, fun_args))
-                Lbar.append(fbar(test_points, point, fun_args))
-            L = np.concatenate(L)
-            Lbar = np.concatenate(Lbar, axis=1)
-            col.append(L)
-            col_bar.append(Lbar)
-        row.append(np.column_stack(col))
-        row_bar.append(np.column_stack(col_bar))
-    row = np.row_stack(row)
+    for outer_op, outer_op_bar in zip(outer_ops, outer_ops_bar):
+        L, Lbar = ([], [])
+        for op, op_bar, point in zip(operators, operators_bar, obs_points):
+            f = op_cache[(op, outer_op_bar)]
+            fbar = op_cache[(op_bar, outer_op)]
+            logging.info('Applying {}, {} to points ({}) and test points ({})'
+                         .format((op, outer_op_bar), (op_bar, outer_op), point.shape, test_points.shape))
+            L.append(f(point, test_points, fun_args))
+            Lbar.append(fbar(test_points, point, fun_args))
+        L = np.concatenate(L)
+        Lbar = np.concatenate(Lbar, axis=1)
+        row.append(L)
+        row_bar.append(Lbar)
+    row = np.column_stack(row)
     row_bar = np.row_stack(row_bar)
+
+    logger.debug('Returning shapes: row={}, row_bar={}'.format(row.shape, row_bar.shape))
     return row, row_bar
 
 
 class CollocationPosterior(object):
-    def __init__(self, operators, operators_bar, op_cache, obs, LLbar_inv, my_ops=None, fun_args=None):
+    def __init__(self, operators, operators_bar, op_cache, obs, LLbar_inv, fun_args=None, my_ops=None):
         self.__operators = operators
         self.__operators_bar = operators_bar
         self.__op_cache = op_cache
         self.__obs = obs
-        self.__LLbar_inv = LLbar_inv
+        self.__LLbar_inv__ = LLbar_inv
         self.__fun_args = fun_args
         self.__outer_ops__ = my_ops
+
+    @property
+    def ops(self):
+        return self.__operators
+
+    @property
+    def ops_bar(self):
+        return self.__operators_bar
 
     def __call__(self, test_points):
         return self.posterior(test_points)
@@ -119,6 +121,10 @@ class CollocationPosterior(object):
         g = np.concatenate([val for _, val in self.__obs])
         mu_multiplier, Sigma = self.no_obs_posterior(test_points)
         return np.dot(mu_multiplier, g), Sigma
+
+    def sample(self, test_points, samples=1):
+        mu, cov = self.posterior(test_points)
+        return np.random.multivariate_normal(mu.ravel(), cov, samples)
 
     def mean(self, test_points, g=None):
         if g is None:
@@ -129,9 +135,9 @@ class CollocationPosterior(object):
             self.__obs,
             test_points,
             self.__op_cache,
-            self.__outer_ops__,
-            self.__fun_args)
-        mu_multiplier = np.dot(Lbar, self.__LLbar_inv)
+            self.__fun_args,
+            self.__outer_ops__)
+        mu_multiplier = np.dot(Lbar, self.__LLbar_inv__)
 
         return np.dot(mu_multiplier, g)
 
@@ -142,13 +148,23 @@ class CollocationPosterior(object):
             self.__obs,
             test_points,
             self.__op_cache,
-            self.__outer_ops__,
-            self.__fun_args)
+            self.__fun_args,
+            self.__outer_ops__
+        )
 
-        mu_multiplier = np.dot(Lbar, self.__LLbar_inv)
-
-        k_eval = self.__op_cache[()]
-        k_mat = k_eval(test_points, test_points, self.__fun_args)
+        mu_multiplier = np.dot(Lbar, self.__LLbar_inv__)
+        if self.__outer_ops__ is None:
+            k_eval = self.__op_cache[()]
+            k_mat = k_eval(test_points, test_points, self.__fun_args)
+        else:
+            synthetic_obs = [(test_points, None) for _ in self.__outer_ops__[0]]
+            k_mat = calc_LLbar(
+                self.__outer_ops__[0],
+                self.__outer_ops__[1],
+                synthetic_obs,
+                self.__op_cache,
+                self.__fun_args
+            )
         Sigma = k_mat - np.dot(mu_multiplier, L)
 
         return mu_multiplier, Sigma
@@ -160,14 +176,14 @@ class CollocationPosterior(object):
             ret[i, 0] = cov
         return ret
 
-    def apply_operator(self, op, op_bar):
+    def apply_operator(self, ops, ops_bar):
         if self.__outer_ops__ is not None:
             raise Exception('Application of an operator to a posterior which has already been operated upon is not supported!')
         return CollocationPosterior(self.__operators,
                                     self.__operators_bar,
                                     self.__op_cache,
                                     self.__obs,
-                                    self.__LLbar_inv,
-                                    (op, op_bar),
-                                    self.__fun_args
+                                    self.__LLbar_inv__,
+                                    self.__fun_args,
+                                    (ops, ops_bar),
                                     )
