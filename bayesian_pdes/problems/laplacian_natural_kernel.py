@@ -216,6 +216,8 @@ class LaplacianNaturalKernel(object):
     def __getitem__(self, item):
         if not type(item) is tuple:
             item = (item, )
+        item = [i for i in item if i != ()]
+        item = tuple(item)
 
         if item == () or item == (self.B,) or item == (self.B_bar,):
             return self.__pairwiseify__(self.kern)

@@ -1,5 +1,6 @@
 from autograd import numpy as np
 
+
 def woodbury(A_inv, U, C):
     premult = np.dot(A_inv, U)
     postmult = premult.T
@@ -7,6 +8,7 @@ def woodbury(A_inv, U, C):
     interior_inv = np.linalg.inv(interior)
 
     return A_inv - np.dot(premult, np.dot(interior_inv, postmult))
+
 
 def schur(A_inv, U, C, C_inv):
     """
