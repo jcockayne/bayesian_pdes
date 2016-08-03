@@ -5,9 +5,11 @@ except:
     import numpy as np
 
 import logging
+import time
+from util import linalg
 
 logger = logging.getLogger(__name__)
-import time
+
 
 def collocate(operators, operators_bar, observations, op_system, fun_args=None):
     """
@@ -24,13 +26,23 @@ def collocate(operators, operators_bar, observations, op_system, fun_args=None):
     system.
     :return: CollocationPosterior for the supplied operators and observations.
     """
-    for locs, vals in observations:
+    for o in observations:
+        locs = o[0]
+        if len(o) > 1:
+            vals = o[1]
+        else:
+            vals = None
         if vals is None: continue
         err = " (Loc has shape {}, vals have shape {})".format(locs.shape, vals.shape)
         if locs.shape[0] != vals.shape[0]:
             raise Exception("Number of obs not consistent with location of obs " + err)
         if len(locs.shape) != 2:
             raise Exception("Obs locations must be two-dimensional " + err)
+
+        if len(o) > 2:
+            cov = o[2]
+            if cov.shape != (locs.shape[0], locs.shape[0]):
+                raise Exception('Size of cov {} not consistent with locations {}'.format(cov.shape, locs.shape))
 
     if len(operators) != len(observations):
         raise Exception('Number of obs not consistent with number of operators ({} observations but {} operators)'
@@ -73,6 +85,10 @@ def compute_operator_matrix(operators, operators_bar, points, points_bar, op_sys
         row = []
         for op_bar, p_bar in zip(operators_bar, points_bar):
             fun_op = op_system[(op, op_bar)]
+            msg = 'Calling {} with arg shapes x={}, y={}'.format((op, op_bar), p.shape, p_bar.shape)
+            if fun_args is not None:
+                msg += ', args={}'.format(fun_args.shape)
+            logger.debug(msg)
             applied = fun_op(p, p_bar, fun_args)
             row.append(applied)
         rows.append(np.column_stack(row))
@@ -80,9 +96,24 @@ def compute_operator_matrix(operators, operators_bar, points, points_bar, op_sys
     return np.row_stack(rows)
 
 
-def calc_LLbar(operators, operators_bar, observations, op_cache, fun_args=None):
-    points = [p for p, _ in observations]
-    return compute_operator_matrix(operators, operators_bar, points, points, op_cache, fun_args)
+def calc_LLbar(operators, operators_bar, observations, op_cache, fun_args):
+    points = [p[0] for p in observations]
+
+    op_mat = compute_operator_matrix(operators, operators_bar, points, points, op_cache, fun_args)
+    if not any(len(o) == 3 for o in observations):
+        return op_mat
+
+    # adjust for covariance of observations
+    covs = []
+    for o in observations:
+        points = o[0]
+        num_points = points.shape[0]
+        if len(o) == 3:
+            covs.append(o[2])
+        else:
+            covs.append(np.zeros((num_points, num_points)))
+    adj = linalg.block_diag(covs)
+    return op_mat + adj
 
 
 def calc_side_matrices(operators, operators_bar, obs, test_points, op_cache, outer_ops=None, outer_ops_bar=None, fun_args=None):
@@ -90,7 +121,7 @@ def calc_side_matrices(operators, operators_bar, obs, test_points, op_cache, out
         outer_ops = ()
     if outer_ops_bar is None:
         outer_ops_bar = ()
-    points = [p for p, _ in obs]
+    points = [p[0] for p in obs]
     L = compute_operator_matrix(operators, outer_ops_bar, points, test_points, op_cache, fun_args)
     Lbar = compute_operator_matrix(outer_ops, operators_bar, test_points, points, op_cache, fun_args)
     return L, Lbar
@@ -120,12 +151,13 @@ class CollocationPosterior(object):
         return self.posterior(test_points)
 
     def posterior(self, test_points):
-        g = np.concatenate([val for _, val in self.__obs__])
+        g = np.concatenate([o[1] for o in self.__obs__])
         mu_multiplier, Sigma = self.no_obs_posterior(test_points)
         return self.__adjust_mean__(test_points, g, mu_multiplier), Sigma
 
     def kern(self, x, y, fun_args):
-        obs_points = [p for p, _ in self.__obs__]
+        assert all([len(o) < 3 for o in self.__obs__]), "Currently this method doesn't support noisy obs properly!"
+        obs_points = [o[0] for o in self.__obs__]
         L = compute_operator_matrix(self.__operators__, self.__outer_ops_bar__, obs_points, y, self.__op_system__, fun_args)
         Lbar = compute_operator_matrix(self.__outer_ops__, self.__operators_bar__, x, obs_points, self.__op_system__, fun_args)
         k_mat = compute_operator_matrix(self.__outer_ops__, self.__outer_ops_bar__, x, y, self.__op_system__, fun_args)
@@ -138,9 +170,9 @@ class CollocationPosterior(object):
 
     def mean(self, test_points, g=None):
         if g is None:
-            g = np.concatenate([val for _, val in self.__obs__])
+            g = np.concatenate([v[1] for v in self.__obs__])
 
-        obs_points = [p for p, _ in self.__obs__]
+        obs_points = [v[0] for v in self.__obs__]
         Lbar = compute_operator_matrix(self.__outer_ops__,
                                        self.__operators_bar__,
                                        test_points,
@@ -165,7 +197,7 @@ class CollocationPosterior(object):
 
     def no_obs_posterior(self, test_points):
 
-        points = [p for p, _ in self.__obs__]
+        points = [p[0] for p in self.__obs__]
         L = compute_operator_matrix(self.__operators__, self.__outer_ops_bar__, points, test_points, self.__op_system__, self.__fun_args__)
         Lbar = compute_operator_matrix(self.__outer_ops__, self.__operators_bar__, test_points, points, self.__op_system__, self.__fun_args__)
 

@@ -1,13 +1,9 @@
 from autograd import numpy as np
-from util.linalg import schur
-import collocation
+from ..util.linalg import schur
+from .. import collocation
 import logging
 
 logger = logging.getLogger(__name__)
-
-
-def augment_with_time(spatial_points, time):
-    return np.column_stack([spatial_points, time * np.ones((spatial_points.shape[0], 1))])
 
 
 def solve_parabolic(op_system, ops, ops_bar, times, obs_function, ics, fun_args=None):
@@ -66,8 +62,6 @@ def step_forward(all_ops, all_ops_bar, all_obs, op_system, fun_args, last_poster
     ))
     new_inv = schur(prev_inv, K_ttm1, K_t, K_t_inv)
 
-    # what about the mean... something up here. I should be able to do this without needing to apply
-    # the operator at each step but it seems unavoidable.
     posterior_t = collocation.CollocationPosterior(flatten_list(all_ops),
                                                    flatten_list(all_ops_bar),
                                                    op_system,
