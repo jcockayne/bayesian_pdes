@@ -26,3 +26,22 @@ def schur(A_inv, U, C, C_inv):
 
     return np.concatenate([np.concatenate([top_left, -top_right], axis=1),
                            np.concatenate([-bottom_left, bottom_right], axis=1)])
+
+
+def block_diag(arrs):
+    arrs = [np.atleast_2d(a) for a in arrs]
+
+    bad_args = [k for k in range(len(arrs)) if arrs[k].ndim > 2]
+    if bad_args:
+        raise ValueError("arguments in the following positions have dimension "
+                            "greater than 2: %s" % bad_args)
+
+    rows = []
+    for ix, a in enumerate(arrs):
+        left_shape = sum(a.shape[0] for a in arrs[:ix])
+        right_shape = sum(a.shape[0] for a in arrs[ix+1:])
+        left_mat = np.zeros((a.shape[0], left_shape))
+        right_mat = np.zeros((a.shape[0], right_shape))
+        rows.append(np.column_stack([left_mat, a, right_mat]))
+
+    return np.row_stack(rows)
