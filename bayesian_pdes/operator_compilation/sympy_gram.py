@@ -21,8 +21,14 @@ if({}):
     return {}
 """
 
-__ROUTINE__ = """cdef double {name}({args}) nogil:
+__ROUTINE__ = """# =======================
+# {comment}
+# =======================
+cdef double {name}({args}) nogil:
 {impl}
+
+def {name}_raw({args}):
+    return {name}({arg_names})
 
 def {name}{gram_ext}(np.ndarray[ndim=2, dtype=np.float_t] xarr, np.ndarray[ndim=2, dtype=np.float_t] yarr, np.ndarray[ndim=1, dtype=np.float_t] fun_args=None):
     if fun_args is None:
@@ -90,25 +96,33 @@ setup(
 # - don't want to adding to sys.path for every compilation
 # - print_ccode doesn't quite print cython code, only _very close_. Eg. if I have 2 in there instead of 2. it will fail.
 
-
-def to_c(kern, symbols, limits):
+def to_c(operators, kern, symbols, limits, supports):
     limit_codes = []
     if limits is not None:
         for z, z0 in limits:
-            lim = sp.printing.ccode(sp.limit(kern, z, z0))
+            try:
+                lim = sp.simplify(sp.limit(kern, z, z0))
+            except Exception as ex:
+                raise Exception('Failed to compute lim {} -> {} of operators {}'.format(z, z0, operators))
+            lim_code = sp.printing.ccode(lim)
             equality_condition = '{} == {}'.format(sp.printing.ccode(z), sp.printing.ccode(z0))
-            limit_codes.append(__CONDITION__.format(equality_condition, lim))
+            limit_codes.append(__CONDITION__.format(equality_condition, lim_code))
+    support_codes = []
+    if supports is not None:
+        for condition in supports:
+            condition_code = sp.printing.ccode(condition)
+            support_codes.append(__CONDITION__.format('not (' + condition_code + ')', 0.0))
 
     c_rep = sp.printing.ccode(kern)
 
-    return '\n'.join(limit_codes) + '\n' + 'return {}'.format(c_rep)
+    return '\n'.join(limit_codes) + '\n' + '\n'.join(support_codes) + '\n' + 'return {}'.format(c_rep)
 
 
-def to_cython_routine(name, kern, symbols, limits):
-    contents = to_c(kern, symbols, limits)
+def to_cython_routine(name, operators, kern, symbols, limits, supports):
+    contents = to_c(operators, kern, symbols, limits, supports)
     arg_defn = '\n'.join([__ARG_DEFN_TEMPLATE__.format(a.name) for group in symbols for a in group])
     arg_spec = ', '.join([__ARG_SPEC_TEMPLATE__.format(a.name) for group in symbols for a in group])
-    arg_names = ', '.join([a.name for group in symbols for a in group])
+    arg_names = ', '.join([sp.printing.ccode(a) for group in symbols for a in group])
     if len(symbols) == 2:
         arg_assignment = ''
     else:
@@ -126,7 +140,8 @@ def to_cython_routine(name, kern, symbols, limits):
                               gram_ext=__GRAM_EXT__,
                               par_ext=__PAR_EXT__,
                               arg_names=arg_names,
-                              args=arg_spec)
+                              args=arg_spec,
+                              comment=operators)
 
 
 def indent(code, n=1):
@@ -175,7 +190,7 @@ def __run_setup__(command, cwd):
                 " ".join(command), e.output.decode()))
 
 
-def compile_sympy(ops, ops_bar, kern, symbols, parallel=False, limits=None, clean=True):
+def compile_sympy(ops, ops_bar, kern, symbols, parallel=False, limits=None, supports=None, clean=True):
     op_map = {}
     all_combs = [()] + [(o,) for o in ops] + [(o,) for o in ops_bar] + [(o, o_bar) for o in ops for o_bar in ops_bar]
 
@@ -185,7 +200,7 @@ def compile_sympy(ops, ops_bar, kern, symbols, parallel=False, limits=None, clea
         for op in comb:
             k_op = op(k_op)
         identifier = randomword(8)
-        code = to_cython_routine(identifier, k_op, symbols, limits)
+        code = to_cython_routine(identifier, comb, k_op, symbols, limits, supports)
         op_map[comb] = identifier
         codes.append(code)
     final_code = __HEADER__ + '\n\n'.join(codes)
@@ -202,6 +217,15 @@ class SympyModuleOperatorSystem(object):
         compilation_utils.infill_op_dict(ops, ops_bar, op_map)
         self.__op_map__ = op_map
         self.__parallel__ = parallel
+
+
+    @property
+    def operators(self):
+        return self.__ops__
+
+    @property
+    def operators_bar(self):
+        return self.__ops_bar__
 
     def __getitem__(self, item):
         if item not in self.__op_map__:
