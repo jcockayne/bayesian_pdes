@@ -4,7 +4,7 @@ import sys
 import shutil
 from subprocess import STDOUT, CalledProcessError, check_output
 import sympy as sp
-from tempfile import NamedTemporaryFile
+import tempfile
 import re
 import compilation_utils
 
@@ -153,12 +153,14 @@ def randomword(length):
 
 
 def compile_cython(cython, root_dir_name=None, clean=True):
-    root_dir_name = '/Users/benorn/code_tmp' if root_dir_name is None else root_dir_name
+    root_dir_name = os.path.join(tempfile.tempdir(), 'code_tmp') if root_dir_name is None else root_dir_name
+    if not os.path.exists(root_dir_name):
+        os.mkdir(root_dir_name)
     mod_name = randomword(8)
     dir_name = os.path.join(root_dir_name, mod_name)
     os.mkdir(dir_name)
 
-    with NamedTemporaryFile(dir=dir_name, delete=False, suffix='.pyx') as f:
+    with tempfile.NamedTemporaryFile(dir=dir_name, delete=False, suffix='.pyx') as f:
         to_import = os.path.splitext(os.path.basename(f.name))[0]
         f.write(cython)
     with open(os.path.join(dir_name, 'setup.py'), 'w') as f:
