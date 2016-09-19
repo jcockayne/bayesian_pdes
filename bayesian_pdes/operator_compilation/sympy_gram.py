@@ -153,7 +153,7 @@ def randomword(length):
 
 
 def compile_cython(cython, root_dir_name=None, clean=True):
-    root_dir_name = os.path.join(tempfile.tempdir(), 'code_tmp') if root_dir_name is None else root_dir_name
+    root_dir_name = os.path.join(tempfile.gettempdir(), 'code_tmp') if root_dir_name is None else root_dir_name
     if not os.path.exists(root_dir_name):
         os.mkdir(root_dir_name)
     mod_name = randomword(8)
