@@ -7,6 +7,7 @@ import sympy as sp
 import tempfile
 import re
 import compilation_utils
+import logging
 
 __HEADER__ = """cimport numpy as np
 import numpy as np
@@ -92,6 +93,9 @@ setup(
 )
 """
 
+
+_logger = logging.getLogger(__name__)
+
 # TODO
 # - don't want to adding to sys.path for every compilation
 # - print_ccode doesn't quite print cython code, only _very close_. Eg. if I have 2 in there instead of 2. it will fail.
@@ -170,7 +174,10 @@ def compile_cython(cython, root_dir_name=None, clean=True):
     if dir_name not in sys.path: sys.path.append(dir_name)
     mod = __import__(to_import)
     if clean:
-        shutil.rmtree(dir_name)
+        try:
+            shutil.rmtree(dir_name)
+        except Exception as ex:
+            _logger.warning("Failed to clean up after myself with exception.", ex)
 
     return mod
 
