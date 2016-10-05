@@ -7,11 +7,12 @@ except:
 import logging
 import time
 from util import linalg
+import inversion
 
 logger = logging.getLogger(__name__)
 
 
-def collocate(operators, operators_bar, observations, op_system, fun_args=None):
+def collocate(operators, operators_bar, observations, op_system, fun_args=None, inverter='direct'):
     """
     Construct a collocation approximation to the system of operators supplied.
     :param operators: List of operators operators (as functions which operate on sympy expressions)
@@ -26,6 +27,8 @@ def collocate(operators, operators_bar, observations, op_system, fun_args=None):
     system.
     :return: CollocationPosterior for the supplied operators and observations.
     """
+    inverter = inversion.factory(inverter)
+
     for o in observations:
         locs = o[0]
         if len(o) > 1:
@@ -49,10 +52,10 @@ def collocate(operators, operators_bar, observations, op_system, fun_args=None):
                         .format(len(observations), len(operators)))
 
     LLbar = calc_LLbar(operators, operators_bar, observations, op_system, fun_args)
-    LLbar_inv = np.linalg.inv(LLbar)
+    LLbar_inverter = inverter(LLbar)
 
     # finally return the posterior
-    return CollocationPosterior(operators, operators_bar, op_system, observations, LLbar_inv, fun_args)
+    return CollocationPosterior(operators, operators_bar, op_system, observations, LLbar_inverter, fun_args)
 
 
 def compute_operator_matrix(operators, operators_bar, points, points_bar, op_system, fun_args=None):
@@ -116,6 +119,14 @@ def calc_LLbar(operators, operators_bar, observations, op_cache, fun_args):
     return op_mat + adj
 
 
+def calc_a1(operators, operators_bar, observations, op_cache, fun_args):
+    op_bar = operators_bar[0]
+    first_points = observations[0][0]
+    y = first_points[:,0][:,None]
+    x = [o[0] for o in observations]
+    return compute_operator_matrix(operators, op_bar, x, y, op_cache, fun_args)
+
+
 def calc_side_matrices(operators, operators_bar, obs, test_points, op_cache, outer_ops=None, outer_ops_bar=None, fun_args=None):
     if outer_ops is None:
         outer_ops = ()
@@ -128,12 +139,12 @@ def calc_side_matrices(operators, operators_bar, obs, test_points, op_cache, out
 
 
 class CollocationPosterior(object):
-    def __init__(self, operators, operators_bar, op_cache, obs, LLbar_inv, fun_args=None, my_ops=None, my_ops_bar=None, prior=None):
+    def __init__(self, operators, operators_bar, op_cache, obs, LLbar_inverter, fun_args=None, my_ops=None, my_ops_bar=None, prior=None):
         self.__operators__ = operators
         self.__operators_bar__ = operators_bar
         self.__op_system__ = op_cache
         self.__obs__ = obs
-        self.__LLbar_inv__ = LLbar_inv
+        self.__LLbar_inverter__ = LLbar_inverter
         self.__fun_args__ = fun_args
         self.__outer_ops__ = [()] if my_ops is None else my_ops
         self.__outer_ops_bar__ = [()] if my_ops_bar is None else my_ops_bar
@@ -161,8 +172,9 @@ class CollocationPosterior(object):
         L = compute_operator_matrix(self.__operators__, self.__outer_ops_bar__, obs_points, y, self.__op_system__, fun_args)
         Lbar = compute_operator_matrix(self.__outer_ops__, self.__operators_bar__, x, obs_points, self.__op_system__, fun_args)
         k_mat = compute_operator_matrix(self.__outer_ops__, self.__outer_ops_bar__, x, y, self.__op_system__, fun_args)
+        term = self.__LLbar_inverter__.apply(L)
 
-        return k_mat - np.dot(Lbar, np.dot(self.__LLbar_inv__, L))
+        return k_mat - np.dot(Lbar,term)
 
     def sample(self, test_points, samples=1):
         mu, cov = self.posterior(test_points)
@@ -179,7 +191,7 @@ class CollocationPosterior(object):
                                        obs_points,
                                        self.__op_system__,
                                        self.__fun_args__)
-        mu_multiplier = np.dot(Lbar, self.__LLbar_inv__)
+        mu_multiplier = self.__LLbar_inverter__.apply_left(Lbar)
 
         return self.__adjust_mean__(test_points, g, mu_multiplier)
 
@@ -201,7 +213,7 @@ class CollocationPosterior(object):
         L = compute_operator_matrix(self.__operators__, self.__outer_ops_bar__, points, test_points, self.__op_system__, self.__fun_args__)
         Lbar = compute_operator_matrix(self.__outer_ops__, self.__operators_bar__, test_points, points, self.__op_system__, self.__fun_args__)
 
-        mu_multiplier = np.dot(Lbar, self.__LLbar_inv__)
+        mu_multiplier = self.__LLbar_inverter__.apply_left(Lbar)
         k_mat = compute_operator_matrix(
             self.__outer_ops__,
             self.__outer_ops_bar__,
@@ -210,7 +222,7 @@ class CollocationPosterior(object):
             self.__op_system__,
             self.__fun_args__)
 
-        logger.debug('Shapes L:{} Lbar:{} LLbar_inv: {} kmat:{}'.format(L.shape, Lbar.shape, self.__LLbar_inv__.shape, k_mat.shape))
+        logger.debug('Shapes L:{} Lbar:{} kmat:{}'.format(L.shape, Lbar.shape, k_mat.shape))
 
         right_term = np.dot(mu_multiplier, L)
         Sigma = k_mat - right_term
@@ -231,7 +243,7 @@ class CollocationPosterior(object):
                                     self.__operators_bar__,
                                     self.__op_system__,
                                     self.__obs__,
-                                    self.__LLbar_inv__,
+                                    self.__LLbar_inverter__,
                                     self.__fun_args__,
                                     ops,
                                     ops_bar,
