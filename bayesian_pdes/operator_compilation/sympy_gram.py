@@ -8,6 +8,7 @@ import tempfile
 import re
 import compilation_utils
 import logging
+import time
 
 __HEADER__ = """cimport numpy as np
 import numpy as np
@@ -170,7 +171,9 @@ def compile_cython(cython, root_dir_name=None, clean=True):
     with open(os.path.join(dir_name, 'setup.py'), 'w') as f:
         f.write(__SETUP_PY__.format(pyx_file_name=to_import))
 
+    t1 = time.time()
     __run_setup__([sys.executable, 'setup.py', 'build_ext', '--inplace'], dir_name)
+    _logger.info("Running setup too {}s".format(time.time() - t1))
     if dir_name not in sys.path: sys.path.append(dir_name)
     mod = __import__(to_import)
     if clean:
@@ -190,7 +193,7 @@ def __check_symbols__(symbols):
 
 def __run_setup__(command, cwd):
     e = os.environ.copy()
-    e['CC'] = '/usr/local/bin/gcc-5'
+    e['CC'] = 'gcc-6'
     try:
         retoutput = check_output(command, stderr=STDOUT, cwd=cwd, env=e)
     except CalledProcessError as e:
@@ -200,6 +203,7 @@ def __run_setup__(command, cwd):
 
 
 def compile_sympy(ops, ops_bar, kern, symbols, parallel=False, limits=None, supports=None, clean=True):
+    t = time.time()
     op_map = {}
     all_combs = [()] + [(o,) for o in ops] + [(o,) for o in ops_bar] + [(o, o_bar) for o in ops for o_bar in ops_bar]
 
@@ -214,6 +218,7 @@ def compile_sympy(ops, ops_bar, kern, symbols, parallel=False, limits=None, supp
         codes.append(code)
     final_code = __HEADER__ + '\n\n'.join(codes)
     mod = compile_cython(final_code, clean=clean)
+    _logger.info("Total time for compilation: {}s".format(time.time() - t))
 
     return SympyModuleOperatorSystem(ops, ops_bar, mod, op_map, parallel=parallel)
 
