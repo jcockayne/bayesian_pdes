@@ -1,4 +1,7 @@
-import numpy as np
+try:
+    from autograd import numpy as np
+except:
+    import numpy as np
 from scipy.sparse import linalg as splinalg
 import abc
 
@@ -9,6 +12,8 @@ def factory(obj):
             return DirectInversion
         if obj == 'cg':
             return CGInversion
+        if obj == 'np':
+            return NPSolveInversion
     raise Exception('Inverter {} not understood'.format(obj))
 
 
@@ -35,23 +40,43 @@ class DirectInversion(Inverter):
         return np.dot(lhs, self.__inv__)
 
 
-class CGInversion(Inverter):
-    def __init__(self, mat, tol=1e-8):
-        self.__mat__ = mat
-        self.__tol__ = tol
+class SolverInverter(Inverter):
+    __metaclass__ = abc.ABCMeta
 
-    @staticmethod
-    def apply_static(mat, rhs, tol):
+    def __init__(self, mat):
+        self.__mat__ = mat
+
+    @abc.abstractmethod
+    def solve(self, mat, rhs):
+        pass
+
+    def apply_static(self, mat, rhs):
         ret = np.empty((mat.shape[0], rhs.shape[1]))
         for ix in xrange(rhs.shape[1]):
-            result, info = splinalg.cg(mat, rhs[:, ix], tol=tol)
+            result = self.solve(mat, rhs[:, ix])
             ret[:, ix] = result
 
         return ret
 
     def apply(self, rhs):
-        return self.apply_static(self.__mat__, rhs, self.__tol__)
+        return self.apply_static(self.__mat__, rhs)
 
     def apply_left(self, lhs):
-        return self.apply_static(self.__mat__.T, lhs.T, self.__tol__).T
+        return self.apply_static(self.__mat__.T, lhs.T).T
 
+
+class CGInversion(SolverInverter):
+    def __init__(self, mat, tol=1e-8):
+        super(CGInversion, self).__init__(mat)
+        self.__tol__ = tol
+
+    def solve(self, mat, rhs):
+        result, info = splinalg.cg(mat, rhs, tol=self.__tol__)
+        if info != 0:
+            raise Exception("Inversion failed with nonzero exit code {}".format(info))
+        return result
+
+
+class NPSolveInversion(SolverInverter):
+    def solve(self, mat, rhs):
+        return np.linalg.solve(mat, rhs)

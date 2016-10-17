@@ -12,7 +12,7 @@ import inversion
 logger = logging.getLogger(__name__)
 
 
-def collocate(operators, operators_bar, observations, op_system, fun_args=None, inverter='direct'):
+def collocate(operators, operators_bar, observations, op_system, fun_args=None, inverter='direct', inverter_kwargs=None):
     """
     Construct a collocation approximation to the system of operators supplied.
     :param operators: List of operators operators (as functions which operate on sympy expressions)
@@ -28,6 +28,8 @@ def collocate(operators, operators_bar, observations, op_system, fun_args=None, 
     :return: CollocationPosterior for the supplied operators and observations.
     """
     inverter = inversion.factory(inverter)
+    if inverter_kwargs is None:
+        inverter_kwargs = {}
 
     for o in observations:
         locs = o[0]
@@ -52,7 +54,7 @@ def collocate(operators, operators_bar, observations, op_system, fun_args=None, 
                         .format(len(observations), len(operators)))
 
     LLbar = calc_LLbar(operators, operators_bar, observations, op_system, fun_args)
-    LLbar_inverter = inverter(LLbar)
+    LLbar_inverter = inverter(LLbar, **inverter_kwargs)
 
     # finally return the posterior
     return CollocationPosterior(operators, operators_bar, op_system, observations, LLbar_inverter, fun_args)

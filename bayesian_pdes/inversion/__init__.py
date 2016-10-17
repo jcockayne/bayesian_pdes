@@ -1,1 +1,1 @@
-from inversion_methods import CGInversion, DirectInversion, factory
+from inversion_methods import CGInversion, DirectInversion, NPSolveInversion, factory
