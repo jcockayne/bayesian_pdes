@@ -1,4 +1,5 @@
 # Byte-compiled / optimized / DLL files
+
 __pycache__/
 *.py[cod]
 
@@ -68,4 +69,10 @@ experiments/
 notebooks/figures/
 notebooks/eit_results/
 notebooks/allen_cahn_results/
-notebooks/crime_results/
+notebooks/crime_models/crime_results/
+notebooks/crime_models/crime_results_2d/
+notebooks/**/*.pdf
+notebooks/**/*.zip
+notebooks/**/*.npy
+notebooks/**/*.pkl
+notebooks/**/*.tex
