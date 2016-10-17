@@ -69,3 +69,15 @@ class BCCBTest(unittest.TestCase):
                 x = np.linalg.solve(circ_mat, b[:,ix])
 
                 np.testing.assert_almost_equal(np.real(circ_x[:,ix]), x, err_msg='Failed for column {}'.format(ix))
+
+    def test_solve_circulant(self):
+        col = np.random.normal(size=(100, 1))
+        mat = np.empty((100, 100))
+        for i in xrange(100):
+            mat[:,i] = np.roll(col.ravel(), i)
+
+        b = np.random.normal(size=(100, 1))
+        circ_x = bccb.bccb_solve(col, b, (100, 1))
+        x = np.linalg.solve(mat, b)
+
+        np.testing.assert_almost_equal(circ_x, x)
