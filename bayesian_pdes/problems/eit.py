@@ -42,12 +42,11 @@ class EITFactory(object):
         symbols = [symbols, symbols_bar]
         if extra_symbols is not None:
             symbols.append(extra_symbols)
-        op_cache_base = bayesian_pdes.operator_compilation.compile_sympy(
+        op_cache_base = bayesian_pdes.operator_compilation.sympy_gram.compile_sympy(
             ops_base,
             ops_bar_base,
             kernel,
-            symbols,
-            mode=compile_mode
+            symbols
         )
         self.__base_op_cache__ = op_cache_base
         self.__caching_op_cache__ = bayesian_pdes.operator_compilation.CachingOpCache(op_cache_base)
