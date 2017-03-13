@@ -81,7 +81,7 @@ from Cython.Build import cythonize
 import numpy as np
 
 setup(
-    ext_modules = [
+    ext_modules = cythonize([
         Extension(
             '{pyx_file_name}',
             ['{pyx_file_name}.pyx'],
@@ -89,7 +89,7 @@ setup(
             extra_link_args=['-fopenmp'],
             include_dirs=[np.get_include()]
         )
-    ],
+    ]),
     include_dirs = [np.get_include()]
 )
 """
@@ -198,8 +198,8 @@ def __run_setup__(command, cwd):
         retoutput = check_output(command, stderr=STDOUT, cwd=cwd, env=e)
     except CalledProcessError as e:
         raise Exception(
-            "Error while executing command: %s. Command output is:\n%s" % (
-                " ".join(command), e.output.decode()))
+            "Error while executing command: %s. CWD is %s. Command output is:\n%s" % (
+                " ".join(command), cwd, e.output.decode()))
 
 
 def compile_sympy(ops, ops_bar, kern, symbols, parallel=False, limits=None, supports=None, clean=True):
