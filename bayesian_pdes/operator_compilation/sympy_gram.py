@@ -193,7 +193,7 @@ def __check_symbols__(symbols):
 
 def __run_setup__(command, cwd):
     e = os.environ.copy()
-    e['CC'] = 'gcc-6'
+    #e['CC'] = 'gcc-6'
     try:
         retoutput = check_output(command, stderr=STDOUT, cwd=cwd, env=e)
     except CalledProcessError as e:
