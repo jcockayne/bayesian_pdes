@@ -1,5 +1,5 @@
-from sympy_compiler import compile_sympy
-from caching import CachingOpCache
-from composite import CompositeOperatorSystem
-import sympy_gram
+from .sympy_compiler import compile_sympy
+from .caching import CachingOpCache
+from .composite import CompositeOperatorSystem
+from . import sympy_gram
 

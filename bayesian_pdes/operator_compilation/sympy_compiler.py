@@ -1,7 +1,7 @@
-from bayesian_pdes import pairwise
+from .. import pairwise
 
-import compilation_utils
-from bayesian_pdes.operator_compilation.sympy_helpers import sympy_function, n_arg_applier
+from . import compilation_utils
+from .sympy_helpers import sympy_function, n_arg_applier
 
 
 class OperatorSystem(object):

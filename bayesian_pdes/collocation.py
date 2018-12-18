@@ -6,8 +6,8 @@ except:
 
 import logging
 import time
-from util import linalg
-import inversion
+from .util import linalg
+from . import inversion
 
 logger = logging.getLogger(__name__)
 

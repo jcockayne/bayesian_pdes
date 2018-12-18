@@ -1,1 +1,1 @@
-import linalg, bccb
+from . import linalg, bccb

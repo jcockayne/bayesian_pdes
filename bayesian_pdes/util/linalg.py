@@ -1,4 +1,8 @@
-from autograd import numpy as np
+try:
+    from autograd import numpy as np
+except Exception as ex:
+    import numpy as np
+
 
 
 def woodbury(A_inv, U, C):
